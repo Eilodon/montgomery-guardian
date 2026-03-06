@@ -5,9 +5,13 @@ import { cn } from "@/lib/utils";
 import type { AlertItemCardProps } from "./types";
 import { severityColors } from "./types";
 
-function formatRelativeTime(timestamp: Date): string {
+/**
+ * Converts ISO 8601 timestamp string to relative time
+ */
+function formatRelativeTime(timestamp: string): string {
   const now = Date.now();
-  const diff = now - timestamp.getTime();
+  const timestampDate = new Date(timestamp);
+  const diff = now - timestampDate.getTime();
   
   const seconds = Math.floor(diff / 1000);
   const minutes = Math.floor(seconds / 60);
@@ -76,7 +80,7 @@ export function AlertItemCard({ alert, isNew }: AlertItemCardProps) {
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <span className="font-medium">{source}</span>
             <span aria-hidden="true">•</span>
-            <time dateTime={timestamp.toISOString()}>
+            <time dateTime={timestamp}>
               {formatRelativeTime(timestamp)}
             </time>
           </div>

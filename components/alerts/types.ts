@@ -1,14 +1,22 @@
 // AlertFeed Types
+// Aligned with shared/types/index.ts AlertItem interface
 
 export type AlertSeverity = "critical" | "high" | "medium" | "low";
 
+/**
+ * AlertItem interface - matches shared/types/index.ts
+ * timestamp is ISO 8601 string format
+ */
 export interface AlertItem {
   id: string;
   title: string;
   summary: string;
   severity: AlertSeverity;
   source: string;
-  timestamp: Date;
+  timestamp: string; // ISO 8601 format
+  sourceUrl?: string;
+  coordinates?: [number, number];
+  affectedNeighborhood?: string;
 }
 
 export interface AlertFeedProps {

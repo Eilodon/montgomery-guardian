@@ -39,6 +39,7 @@ const sampleDistricts: DistrictData[] = [
 ];
 
 // Sample alerts data for demonstration
+// Using ISO 8601 string format for timestamps (matches shared/types/index.ts)
 const sampleAlerts: AlertItem[] = [
   {
     id: "1",
@@ -46,7 +47,7 @@ const sampleAlerts: AlertItem[] = [
     summary: "Active fire reported at 425 Main Street. Fire department dispatched. Nearby residents advised to avoid the area.",
     severity: "critical",
     source: "Fire Department",
-    timestamp: new Date(Date.now() - 2 * 60 * 1000), // 2 min ago
+    timestamp: new Date(Date.now() - 2 * 60 * 1000).toISOString(), // 2 min ago
   },
   {
     id: "2",
@@ -54,7 +55,7 @@ const sampleAlerts: AlertItem[] = [
     summary: "Multi-vehicle accident on Highway 270 near Exit 15. Emergency services on scene. Expect delays.",
     severity: "high",
     source: "Traffic Control",
-    timestamp: new Date(Date.now() - 8 * 60 * 1000), // 8 min ago
+    timestamp: new Date(Date.now() - 8 * 60 * 1000).toISOString(), // 8 min ago
   },
   {
     id: "3",
@@ -62,7 +63,7 @@ const sampleAlerts: AlertItem[] = [
     summary: "Water main break reported on Oak Avenue. Crews dispatched for repair. Low water pressure expected in the area.",
     severity: "medium",
     source: "Public Works",
-    timestamp: new Date(Date.now() - 25 * 60 * 1000), // 25 min ago
+    timestamp: new Date(Date.now() - 25 * 60 * 1000).toISOString(), // 25 min ago
   },
   {
     id: "4",
@@ -70,7 +71,7 @@ const sampleAlerts: AlertItem[] = [
     summary: "Montgomery Park closed for scheduled maintenance. Expected to reopen tomorrow at 8 AM.",
     severity: "low",
     source: "Parks & Recreation",
-    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
+    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
   },
   {
     id: "5",
@@ -78,7 +79,7 @@ const sampleAlerts: AlertItem[] = [
     summary: "Approximately 500 customers affected by power outage in downtown area. Crews investigating cause.",
     severity: "high",
     source: "Power Company",
-    timestamp: new Date(Date.now() - 3 * 60 * 1000), // 3 min ago
+    timestamp: new Date(Date.now() - 3 * 60 * 1000).toISOString(), // 3 min ago
   },
 ];
 

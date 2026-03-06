@@ -7,9 +7,9 @@ import { AlertSkeleton } from "./alert-skeleton";
 import type { AlertFeedProps } from "./types";
 
 export function AlertFeed({ alerts, isLoading }: AlertFeedProps) {
-  const isNew = (timestamp: Date): boolean => {
+  const isNew = (timestamp: string): boolean => {
     const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-    return timestamp.getTime() > fiveMinutesAgo;
+    return new Date(timestamp).getTime() > fiveMinutesAgo;
   };
 
   // Loading state
