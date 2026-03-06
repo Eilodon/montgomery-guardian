@@ -9,7 +9,13 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "Montgomery Guardian - City Safety Platform",
-  description: "Real-time city safety monitoring and KPI dashboard for Montgomery",
+  description: "Real-time city safety monitoring and AI companion for Montgomery",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Montgomery Guardian",
+  },
 };
 
 export const viewport: Viewport = {
