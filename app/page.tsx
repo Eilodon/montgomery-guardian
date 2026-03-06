@@ -8,6 +8,35 @@ import {
 import { MapContainer } from "@/components/map";
 import { AlertFeed, type AlertItem } from "@/components/alerts";
 import { SplitViewAnalytics } from "@/components/analytics";
+import { SafetyScorecard, type DistrictData } from "@/components/scorecard";
+
+// Sample district data for neighborhood scorecard
+const sampleDistricts: DistrictData[] = [
+  { id: "1", name: "Downtown", grade: "B", crimeIndex: 3.2, backlog311: 45, trend: 8 },
+  { id: "2", name: "Bethesda", grade: "A", crimeIndex: 1.5, backlog311: 12, trend: -5 },
+  { id: "3", name: "Silver Spring", grade: "C", crimeIndex: 4.8, backlog311: 67, trend: 12 },
+  { id: "4", name: "Wheaton", grade: "C", crimeIndex: 4.2, backlog311: 54, trend: 3 },
+  { id: "5", name: "Rockville", grade: "B", crimeIndex: 2.8, backlog311: 38, trend: -2 },
+  { id: "6", name: "Gaithersburg", grade: "B", crimeIndex: 3.0, backlog311: 41, trend: 0 },
+  { id: "7", name: "Germantown", grade: "A", crimeIndex: 1.8, backlog311: 18, trend: -8 },
+  { id: "8", name: "Takoma Park", grade: "C", crimeIndex: 4.5, backlog311: 62, trend: 15 },
+  { id: "9", name: "Chevy Chase", grade: "A", crimeIndex: 1.2, backlog311: 8, trend: -3 },
+  { id: "10", name: "Olney", grade: "B", crimeIndex: 2.5, backlog311: 28, trend: -1 },
+  { id: "11", name: "Aspen Hill", grade: "D", crimeIndex: 5.8, backlog311: 89, trend: 18 },
+  { id: "12", name: "White Oak", grade: "C", crimeIndex: 4.0, backlog311: 52, trend: 6 },
+  { id: "13", name: "Potomac", grade: "A", crimeIndex: 1.0, backlog311: 5, trend: -4 },
+  { id: "14", name: "Kensington", grade: "B", crimeIndex: 2.9, backlog311: 35, trend: 2 },
+  { id: "15", name: "Burtonsville", grade: "C", crimeIndex: 4.3, backlog311: 58, trend: 9 },
+  { id: "16", name: "Clarksburg", grade: "B", crimeIndex: 2.2, backlog311: 22, trend: -6 },
+  { id: "17", name: "Damascus", grade: "A", crimeIndex: 1.4, backlog311: 10, trend: -2 },
+  { id: "18", name: "Poolesville", grade: "A", crimeIndex: 0.8, backlog311: 4, trend: 0 },
+  { id: "19", name: "Laytonsville", grade: "B", crimeIndex: 2.0, backlog311: 15, trend: 1 },
+  { id: "20", name: "Colesville", grade: "D", crimeIndex: 5.5, backlog311: 78, trend: 14 },
+  { id: "21", name: "Fairland", grade: "C", crimeIndex: 4.6, backlog311: 64, trend: 7 },
+  { id: "22", name: "Langley Park", grade: "F", crimeIndex: 7.2, backlog311: 112, trend: 22 },
+  { id: "23", name: "Leisure World", grade: "A", crimeIndex: 0.9, backlog311: 6, trend: -1 },
+  { id: "24", name: "Montgomery Village", grade: "C", crimeIndex: 4.1, backlog311: 55, trend: 4 },
+];
 
 // Sample alerts data for demonstration
 const sampleAlerts: AlertItem[] = [
@@ -74,7 +103,7 @@ const sampleData: KPIDashboardData = {
 };
 
 export default function DemoPage() {
-  const [activeView, setActiveView] = useState<"dashboard" | "map" | "analytics">("map");
+  const [activeView, setActiveView] = useState<"dashboard" | "map" | "analytics" | "scorecard">("map");
   const [isLoading, setIsLoading] = useState(false);
 
   const simulateLoading = () => {
@@ -126,6 +155,16 @@ export default function DemoPage() {
             Analytics
           </button>
           <button
+            onClick={() => setActiveView("scorecard")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              activeView === "scorecard"
+                ? "bg-accent text-slate-100"
+                : "text-slate-400 hover:text-slate-100 hover:bg-slate-800"
+            }`}
+          >
+            Scorecard
+          </button>
+          <button
             onClick={simulateLoading}
             className="ml-4 px-3 py-2 rounded-lg bg-slate-800 text-slate-300 text-sm hover:bg-slate-700 transition-colors border border-slate-600"
           >
@@ -135,7 +174,13 @@ export default function DemoPage() {
       </header>
 
       {/* Main Content */}
-      {activeView === "analytics" ? (
+      {activeView === "scorecard" ? (
+        <main className="flex-1 p-6 lg:p-10 overflow-auto">
+          <section className="bg-slate-900 border border-slate-700 rounded-xl p-6">
+            <SafetyScorecard districts={sampleDistricts} />
+          </section>
+        </main>
+      ) : activeView === "analytics" ? (
         <main className="flex-1 p-6 lg:p-10 overflow-auto">
           <section className="mb-6">
             <h2 className="text-lg font-semibold text-slate-100 mb-4">
