@@ -7,6 +7,7 @@ import {
 } from "@/components/dashboard";
 import { MapContainer } from "@/components/map";
 import { AlertFeed, type AlertItem } from "@/components/alerts";
+import { SplitViewAnalytics } from "@/components/analytics";
 
 // Sample alerts data for demonstration
 const sampleAlerts: AlertItem[] = [
@@ -73,7 +74,7 @@ const sampleData: KPIDashboardData = {
 };
 
 export default function DemoPage() {
-  const [activeView, setActiveView] = useState<"dashboard" | "map">("map");
+  const [activeView, setActiveView] = useState<"dashboard" | "map" | "analytics">("map");
   const [isLoading, setIsLoading] = useState(false);
 
   const simulateLoading = () => {
@@ -115,6 +116,16 @@ export default function DemoPage() {
             Dashboard
           </button>
           <button
+            onClick={() => setActiveView("analytics")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              activeView === "analytics"
+                ? "bg-accent text-slate-100"
+                : "text-slate-400 hover:text-slate-100 hover:bg-slate-800"
+            }`}
+          >
+            Analytics
+          </button>
+          <button
             onClick={simulateLoading}
             className="ml-4 px-3 py-2 rounded-lg bg-slate-800 text-slate-300 text-sm hover:bg-slate-700 transition-colors border border-slate-600"
           >
@@ -124,7 +135,16 @@ export default function DemoPage() {
       </header>
 
       {/* Main Content */}
-      {activeView === "map" ? (
+      {activeView === "analytics" ? (
+        <main className="flex-1 p-6 lg:p-10 overflow-auto">
+          <section className="mb-6">
+            <h2 className="text-lg font-semibold text-slate-100 mb-4">
+              Predictive Analytics
+            </h2>
+            <SplitViewAnalytics />
+          </section>
+        </main>
+      ) : activeView === "map" ? (
         <MapContainer>
           {/* Placeholder map content - grid pattern */}
           <div className="w-full h-full relative">
