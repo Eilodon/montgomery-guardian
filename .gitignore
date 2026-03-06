@@ -62,3 +62,39 @@ coverage/
 # Temporary folders
 tmp/
 temp/
+
+# ChromaDB database files
+chroma_db/
+*.bin
+
+# Python package build
+*.egg-info/
+*.egg
+
+# Virtual environments
+.venv/
+env/
+
+# Redis dump
+dump.rdb
+
+# PostGIS data
+*.postgis
+
+# ETL cache
+etl/cache/
+*.cache
+
+# ML model artifacts
+*.pkl
+*.joblib
+*.model
+models/__pycache__/
+
+# Test artifacts
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Docker volumes
+docker-volumes/
