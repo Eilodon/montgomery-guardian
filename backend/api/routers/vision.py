@@ -1,0 +1,150 @@
+# backend/api/routers/vision.py
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from typing import Optional
+from ..models.schemas import VisionResponse, VisionAnalysisResult, ServiceRequest311
+from datetime import datetime
+import httpx
+import os
+import base64
+import io
+import sys
+
+# Add AI agents path
+sys.path.append(os.path.join(os.path.dirname(__file__), '../../../ai-agents'))
+
+router = APIRouter()
+
+# AI Agents service URL (would be deployed separately)
+AI_AGENTS_URL = os.getenv("AI_AGENTS_URL", "http://localhost:3001")
+
+@router.post("/vision/analyze", response_model=VisionResponse)
+async def analyze_image(
+    image: UploadFile = File(...),
+    description: Optional[str] = Form(None),
+    location_lat: Optional[float] = Form(None),
+    location_lon: Optional[float] = Form(None)
+):
+    """
+    Analyze an image to detect service requests (potholes, graffiti, etc.).
+    This endpoint uses direct Gemini Vision API integration.
+    """
+    try:
+        # Validate image file
+        if not image.content_type or not image.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        # Read and encode image
+        image_data = await image.read()
+        image_base64 = base64.b64encode(image_data).decode('utf-8')
+        
+        # Try direct Gemini Vision API first
+        result = await _analyze_with_gemini(image_base64, image.content_type, location_lat, location_lon, description)
+        
+        return VisionResponse(result=result)
+                
+    except Exception as e:
+        print(f"Vision analysis error: {e}")
+        # Return fallback response on any error
+        fallback_result = _get_fallback_vision_analysis(image.filename if image else "unknown", description, location_lat, location_lon)
+        return VisionResponse(result=fallback_result)
+
+async def _analyze_with_gemini(
+    image_base64: str, 
+    mime_type: str, 
+    lat: Optional[float], 
+    lon: Optional[float],
+    description: Optional[str]
+) -> VisionAnalysisResult:
+    """Analyze image using Gemini Vision API"""
+    try:
+        # Import the vision agent (direct call to avoid HTTP overhead)
+        from src.agents.vision_agent import analyzeVisionImage
+        
+        # Call the vision analysis function
+        result = await analyzeVisionImage({
+            'imageBase64': image_base64,
+            'mimeType': mime_type,
+            'lat': lat,
+            'lng': lon
+        })
+        
+        # Convert to our VisionAnalysisResult format
+        return VisionAnalysisResult(
+            incidentType=result.get('incidentType', 'other'),
+            severity=result.get('severity', 'medium'),
+            confidence=result.get('confidence', 0.5),
+            description=result.get('description', 'Image analyzed successfully'),
+            suggested311Category=result.get('prefilledForm', {}).get('serviceType', 'other'),
+            prefilledForm={
+                'serviceType': result.get('prefilledForm', {}).get('serviceType', 'other'),
+                'description': result.get('prefilledForm', {}).get('description', result.get('description', '')),
+                'latitude': lat,
+                'longitude': lon,
+                'estimatedResolutionDays': _get_estimated_days(result.get('incidentType', 'other'))
+            }
+        )
+        
+    except Exception as e:
+        print(f"Gemini Vision API error: {e}")
+        raise e
+
+def _get_estimated_days(incident_type: str) -> int:
+    """Get estimated resolution days based on incident type"""
+    estimates = {
+        'pothole': 3,
+        'graffiti': 5,
+        'trash': 2,
+        'flooding': 1,
+        'overgrown_grass': 7,
+        'other': 5
+    }
+    return estimates.get(incident_type, 5)
+
+def _get_fallback_vision_analysis(filename: Optional[str], description: Optional[str], lat: Optional[float] = None, lon: Optional[float] = None) -> VisionAnalysisResult:
+    """Generate fallback vision analysis when AI service is unavailable"""
+    
+    # Simple keyword-based analysis as fallback
+    desc_lower = (description or "").lower()
+    filename_lower = (filename or "").lower()
+    
+    # Determine incident type based on keywords
+    if any(keyword in desc_lower or keyword in filename_lower for keyword in ['pothole', 'road', 'street', 'pavement']):
+        incident_type = 'pothole'
+        severity = 'medium'
+        confidence = 0.7
+        suggested_category = 'Street Maintenance - Pothole Repair'
+    elif any(keyword in desc_lower or keyword in filename_lower for keyword in ['graffiti', 'vandalism', 'tag', 'spray']):
+        incident_type = 'graffiti'
+        severity = 'low'
+        confidence = 0.8
+        suggested_category = 'Public Property - Graffiti Removal'
+    elif any(keyword in desc_lower or keyword in filename_lower for keyword in ['trash', 'garbage', 'waste', 'dump']):
+        incident_type = 'trash'
+        severity = 'medium'
+        confidence = 0.6
+        suggested_category = 'Sanitation - Trash Collection'
+    elif any(keyword in desc_lower or keyword in filename_lower for keyword in ['flood', 'water', 'drainage', 'sewer']):
+        incident_type = 'flooding'
+        severity = 'high'
+        confidence = 0.75
+        suggested_category = 'Public Works - Flooding/Drainage'
+    else:
+        incident_type = 'other'
+        severity = 'medium'
+        confidence = 0.5
+        suggested_category = 'General Service Request'
+    
+    return VisionAnalysisResult(
+        incidentType=incident_type,
+        severity=severity,
+        confidence=confidence,
+        description=f"AI vision service is currently unavailable. Based on your description, this appears to be a {incident_type} issue. A more detailed analysis will be available when the service is restored.",
+        suggested311Category=suggested_category,
+        prefilledForm={
+            "serviceType": incident_type,
+            "description": description or f"Image analysis for {incident_type} issue",
+            "latitude": lat,
+            "longitude": lon,
+            "estimatedResolutionDays": _get_estimated_days(incident_type)
+        }
+    )

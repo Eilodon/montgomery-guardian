@@ -6,6 +6,7 @@ import { LayerToggle } from "./layer-toggle";
 import { RiskZoneRibbon } from "./risk-zone-ribbon";
 import { AlertsSidebar } from "./alerts-sidebar";
 import { AnalyticsPanel } from "./analytics-panel";
+import { UnifiedMap } from "./unified-map";
 import type { MapContainerProps, MapLayerType, RiskZone, Alert } from "./types";
 
 // Default risk zone data
@@ -87,31 +88,7 @@ export function MapContainer({
     >
       {/* Main Map Content Area */}
       <div className="absolute inset-0 pb-[60px]">
-        {children || (
-          <div className="w-full h-full flex items-center justify-center bg-slate-800/50">
-            <div className="text-center">
-              <div className="w-16 h-16 rounded-full bg-slate-700/50 flex items-center justify-center mx-auto mb-4">
-                <svg
-                  className="w-8 h-8 text-slate-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={1.5}
-                    d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
-                  />
-                </svg>
-              </div>
-              <p className="text-slate-400 text-sm">Map Component Placeholder</p>
-              <p className="text-slate-500 text-xs mt-1">
-                Pass a map component as children
-              </p>
-            </div>
-          </div>
-        )}
+        {children || <UnifiedMap />}
       </div>
 
       {/* Layer Toggle Controls */}

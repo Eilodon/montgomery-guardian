@@ -1,0 +1,107 @@
+// ai-agents/src/agents/agent_311.ts
+import { queryRequestsTool } from '../tools/requests_tool';
+
+export async function agent311(ai: any, input: any): Promise<any> {
+  try {
+    console.log('311 agent processing request:', { message: input.message });
+
+    // Extract relevant information from the user's message
+    const locationContext = input.userLocation ? 
+      `User location: ${input.userLocation.lat}, ${input.userLocation.lng}` : '';
+    
+    const historyContext = input.history && input.history.length > 0 ?
+      `Recent conversation: ${input.history.slice(-2).map((h: any) => `${h.role}: ${h.content}`).join(' | ')}` : '';
+
+    // Use tools to get relevant 311 data
+    let requestData = null;
+    try {
+      requestData = await queryRequestsTool({
+        service_type: extractServiceType(input.message),
+        status: extractStatus(input.message),
+        limit: 10,
+        userLocation: input.userLocation
+      });
+    } catch (toolError) {
+      console.warn('311 tool failed:', toolError);
+    }
+
+    const { text } = await ai.generate({
+      prompt: `You are a 311 service expert for Montgomery, Alabama. You help citizens with city service requests and issues.
+
+${locationContext}
+${historyContext}
+${requestData ? `Recent 311 requests in area: ${JSON.stringify(requestData).substring(0, 500)}...` : ''}
+
+User question: "${input.message}"
+
+Provide a helpful response that:
+1. Addresses their specific 311 service question
+2. Provides relevant service request information if available
+3. Explains how to submit or check 311 requests
+4. Suggests appropriate contact methods (online, phone, app)
+5. Includes relevant timelines or expectations
+6. Maintains a helpful, service-oriented tone
+
+Common 311 services in Montgomery:
+- Potholes and road repair
+- Graffiti removal
+- Trash collection issues
+- Flooding and drainage
+- Overgrown grass/vegetation
+- Street light repairs
+- Code enforcement
+
+Keep response under 200 words. Focus on Montgomery, Alabama services.`,
+    });
+
+    return {
+      content: text,
+      agentType: 'service_311',
+      metadata: {
+        source: '311_agent',
+        hasRequestData: !!requestData,
+        userLocation: input.userLocation
+      }
+    };
+
+  } catch (error) {
+    console.error('311 agent failed:', error);
+    return {
+      content: 'I apologize, but I\'m having trouble accessing 311 service information right now. You can submit 311 requests through the Montgomery 311 website, call 311, or use the Montgomery 311 mobile app.',
+      agentType: 'service_311',
+      metadata: { error: '311_agent_failed' }
+    };
+  }
+}
+
+function extractServiceType(message: string): string | null {
+  const serviceTypes = {
+    'pothole': ['pothole', 'road', 'street', 'pavement', 'asphalt', 'hole'],
+    'graffiti': ['graffiti', 'vandalism', 'tag', 'spray paint', 'defacement'],
+    'trash': ['trash', 'garbage', 'waste', 'litter', 'dumping', 'bin'],
+    'flooding': ['flood', 'water', 'drainage', 'sewer', 'standing water'],
+    'overgrown_grass': ['grass', 'vegetation', 'weeds', 'overgrown', 'lawn', 'landscaping']
+  };
+  
+  const messageLower = message.toLowerCase();
+  for (const [serviceType, keywords] of Object.entries(serviceTypes)) {
+    if (keywords.some(keyword => keyword in messageLower)) {
+      return serviceType;
+    }
+  }
+  
+  return null;
+}
+
+function extractStatus(message: string): string | null {
+  const statuses = ['open', 'closed', 'in_progress', 'pending'];
+  const messageLower = message.toLowerCase();
+  
+  for (const status of statuses) {
+    if (status in messageLower) {
+      return status;
+    }
+  }
+  
+  return null;
+}

@@ -1,0 +1,101 @@
+objectid,crimetype,latitude,longitude,neighborhood,incidentdate,status,description
+1,burglary,32.3617,-86.2792,Downtown,2026-03-06T16:20:11.623480,open,Sample crime incident 1
+2,assault,32.3627,-86.2782,Capitol Heights,2026-03-05T16:20:11.623501,closed,Sample crime incident 2
+3,theft,32.3637,-86.27720000000001,Oak Park,2026-03-04T16:20:11.623508,investigating,Sample crime incident 3
+4,drug,32.3647,-86.2762,Garden District,2026-03-03T16:20:11.623513,open,Sample crime incident 4
+5,other,32.3657,-86.2752,Downtown,2026-03-02T16:20:11.623517,closed,Sample crime incident 5
+6,burglary,32.3667,-86.27420000000001,Capitol Heights,2026-03-01T16:20:11.623527,investigating,Sample crime incident 6
+7,assault,32.3677,-86.2732,Oak Park,2026-02-28T16:20:11.623532,open,Sample crime incident 7
+8,theft,32.3687,-86.2722,Garden District,2026-02-27T16:20:11.623536,closed,Sample crime incident 8
+9,drug,32.3697,-86.27120000000001,Downtown,2026-02-26T16:20:11.623539,investigating,Sample crime incident 9
+10,other,32.3707,-86.2702,Capitol Heights,2026-02-25T16:20:11.623543,open,Sample crime incident 10
+11,burglary,32.3617,-86.2792,Oak Park,2026-02-24T16:20:11.623547,closed,Sample crime incident 11
+12,assault,32.3627,-86.2782,Garden District,2026-02-23T16:20:11.623551,investigating,Sample crime incident 12
+13,theft,32.3637,-86.27720000000001,Downtown,2026-02-22T16:20:11.623555,open,Sample crime incident 13
+14,drug,32.3647,-86.2762,Capitol Heights,2026-02-21T16:20:11.623558,closed,Sample crime incident 14
+15,other,32.3657,-86.2752,Oak Park,2026-02-20T16:20:11.623561,investigating,Sample crime incident 15
+16,burglary,32.3667,-86.27420000000001,Garden District,2026-02-19T16:20:11.623565,open,Sample crime incident 16
+17,assault,32.3677,-86.2732,Downtown,2026-02-18T16:20:11.623568,closed,Sample crime incident 17
+18,theft,32.3687,-86.2722,Capitol Heights,2026-02-17T16:20:11.623572,investigating,Sample crime incident 18
+19,drug,32.3697,-86.27120000000001,Oak Park,2026-02-16T16:20:11.623575,open,Sample crime incident 19
+20,other,32.3707,-86.2702,Garden District,2026-02-15T16:20:11.623578,closed,Sample crime incident 20
+21,burglary,32.3617,-86.2792,Downtown,2026-02-14T16:20:11.623585,investigating,Sample crime incident 21
+22,assault,32.3627,-86.2782,Capitol Heights,2026-02-13T16:20:11.623589,open,Sample crime incident 22
+23,theft,32.3637,-86.27720000000001,Oak Park,2026-02-12T16:20:11.623595,closed,Sample crime incident 23
+24,drug,32.3647,-86.2762,Garden District,2026-02-11T16:20:11.623602,investigating,Sample crime incident 24
+25,other,32.3657,-86.2752,Downtown,2026-02-10T16:20:11.623613,open,Sample crime incident 25
+26,burglary,32.3667,-86.27420000000001,Capitol Heights,2026-02-09T16:20:11.623620,closed,Sample crime incident 26
+27,assault,32.3677,-86.2732,Oak Park,2026-02-08T16:20:11.623628,investigating,Sample crime incident 27
+28,theft,32.3687,-86.2722,Garden District,2026-02-07T16:20:11.623636,open,Sample crime incident 28
+29,drug,32.3697,-86.27120000000001,Downtown,2026-02-06T16:20:11.623640,closed,Sample crime incident 29
+30,other,32.3707,-86.2702,Capitol Heights,2026-02-05T16:20:11.623644,investigating,Sample crime incident 30
+31,burglary,32.3617,-86.2792,Oak Park,2026-03-06T16:20:11.623647,open,Sample crime incident 31
+32,assault,32.3627,-86.2782,Garden District,2026-03-05T16:20:11.623651,closed,Sample crime incident 32
+33,theft,32.3637,-86.27720000000001,Downtown,2026-03-04T16:20:11.623657,investigating,Sample crime incident 33
+34,drug,32.3647,-86.2762,Capitol Heights,2026-03-03T16:20:11.623661,open,Sample crime incident 34
+35,other,32.3657,-86.2752,Oak Park,2026-03-02T16:20:11.623664,closed,Sample crime incident 35
+36,burglary,32.3667,-86.27420000000001,Garden District,2026-03-01T16:20:11.623668,investigating,Sample crime incident 36
+37,assault,32.3677,-86.2732,Downtown,2026-02-28T16:20:11.623671,open,Sample crime incident 37
+38,theft,32.3687,-86.2722,Capitol Heights,2026-02-27T16:20:11.623675,closed,Sample crime incident 38
+39,drug,32.3697,-86.27120000000001,Oak Park,2026-02-26T16:20:11.623678,investigating,Sample crime incident 39
+40,other,32.3707,-86.2702,Garden District,2026-02-25T16:20:11.623681,open,Sample crime incident 40
+41,burglary,32.3617,-86.2792,Downtown,2026-02-24T16:20:11.623685,closed,Sample crime incident 41
+42,assault,32.3627,-86.2782,Capitol Heights,2026-02-23T16:20:11.623688,investigating,Sample crime incident 42
+43,theft,32.3637,-86.27720000000001,Oak Park,2026-02-22T16:20:11.623692,open,Sample crime incident 43
+44,drug,32.3647,-86.2762,Garden District,2026-02-21T16:20:11.623695,closed,Sample crime incident 44
+45,other,32.3657,-86.2752,Downtown,2026-02-20T16:20:11.623701,investigating,Sample crime incident 45
+46,burglary,32.3667,-86.27420000000001,Capitol Heights,2026-02-19T16:20:11.623708,open,Sample crime incident 46
+47,assault,32.3677,-86.2732,Oak Park,2026-02-18T16:20:11.623711,closed,Sample crime incident 47
+48,theft,32.3687,-86.2722,Garden District,2026-02-17T16:20:11.623715,investigating,Sample crime incident 48
+49,drug,32.3697,-86.27120000000001,Downtown,2026-02-16T16:20:11.623718,open,Sample crime incident 49
+50,other,32.3707,-86.2702,Capitol Heights,2026-02-15T16:20:11.623722,closed,Sample crime incident 50
+51,burglary,32.3617,-86.2792,Oak Park,2026-02-14T16:20:11.623725,investigating,Sample crime incident 51
+52,assault,32.3627,-86.2782,Garden District,2026-02-13T16:20:11.623728,open,Sample crime incident 52
+53,theft,32.3637,-86.27720000000001,Downtown,2026-02-12T16:20:11.623732,closed,Sample crime incident 53
+54,drug,32.3647,-86.2762,Capitol Heights,2026-02-11T16:20:11.623735,investigating,Sample crime incident 54
+55,other,32.3657,-86.2752,Oak Park,2026-02-10T16:20:11.623739,open,Sample crime incident 55
+56,burglary,32.3667,-86.27420000000001,Garden District,2026-02-09T16:20:11.623742,closed,Sample crime incident 56
+57,assault,32.3677,-86.2732,Downtown,2026-02-08T16:20:11.623745,investigating,Sample crime incident 57
+58,theft,32.3687,-86.2722,Capitol Heights,2026-02-07T16:20:11.623749,open,Sample crime incident 58
+59,drug,32.3697,-86.27120000000001,Oak Park,2026-02-06T16:20:11.623755,closed,Sample crime incident 59
+60,other,32.3707,-86.2702,Garden District,2026-02-05T16:20:11.623759,investigating,Sample crime incident 60
+61,burglary,32.3617,-86.2792,Downtown,2026-03-06T16:20:11.623763,open,Sample crime incident 61
+62,assault,32.3627,-86.2782,Capitol Heights,2026-03-05T16:20:11.623766,closed,Sample crime incident 62
+63,theft,32.3637,-86.27720000000001,Oak Park,2026-03-04T16:20:11.623770,investigating,Sample crime incident 63
+64,drug,32.3647,-86.2762,Garden District,2026-03-03T16:20:11.623775,open,Sample crime incident 64
+65,other,32.3657,-86.2752,Downtown,2026-03-02T16:20:11.623779,closed,Sample crime incident 65
+66,burglary,32.3667,-86.27420000000001,Capitol Heights,2026-03-01T16:20:11.623783,investigating,Sample crime incident 66
+67,assault,32.3677,-86.2732,Oak Park,2026-02-28T16:20:11.623786,open,Sample crime incident 67
+68,theft,32.3687,-86.2722,Garden District,2026-02-27T16:20:11.623789,closed,Sample crime incident 68
+69,drug,32.3697,-86.27120000000001,Downtown,2026-02-26T16:20:11.623793,investigating,Sample crime incident 69
+70,other,32.3707,-86.2702,Capitol Heights,2026-02-25T16:20:11.623796,open,Sample crime incident 70
+71,burglary,32.3617,-86.2792,Oak Park,2026-02-24T16:20:11.623800,closed,Sample crime incident 71
+72,assault,32.3627,-86.2782,Garden District,2026-02-23T16:20:11.623805,investigating,Sample crime incident 72
+73,theft,32.3637,-86.27720000000001,Downtown,2026-02-22T16:20:11.623809,open,Sample crime incident 73
+74,drug,32.3647,-86.2762,Capitol Heights,2026-02-21T16:20:11.623812,closed,Sample crime incident 74
+75,other,32.3657,-86.2752,Oak Park,2026-02-20T16:20:11.623816,investigating,Sample crime incident 75
+76,burglary,32.3667,-86.27420000000001,Garden District,2026-02-19T16:20:11.623819,open,Sample crime incident 76
+77,assault,32.3677,-86.2732,Downtown,2026-02-18T16:20:11.623823,closed,Sample crime incident 77
+78,theft,32.3687,-86.2722,Capitol Heights,2026-02-17T16:20:11.623827,investigating,Sample crime incident 78
+79,drug,32.3697,-86.27120000000001,Oak Park,2026-02-16T16:20:11.623830,open,Sample crime incident 79
+80,other,32.3707,-86.2702,Garden District,2026-02-15T16:20:11.623834,closed,Sample crime incident 80
+81,burglary,32.3617,-86.2792,Downtown,2026-02-14T16:20:11.623837,investigating,Sample crime incident 81
+82,assault,32.3627,-86.2782,Capitol Heights,2026-02-13T16:20:11.623841,open,Sample crime incident 82
+83,theft,32.3637,-86.27720000000001,Oak Park,2026-02-12T16:20:11.623844,closed,Sample crime incident 83
+84,drug,32.3647,-86.2762,Garden District,2026-02-11T16:20:11.623866,investigating,Sample crime incident 84
+85,other,32.3657,-86.2752,Downtown,2026-02-10T16:20:11.623871,open,Sample crime incident 85
+86,burglary,32.3667,-86.27420000000001,Capitol Heights,2026-02-09T16:20:11.623875,closed,Sample crime incident 86
+87,assault,32.3677,-86.2732,Oak Park,2026-02-08T16:20:11.623878,investigating,Sample crime incident 87
+88,theft,32.3687,-86.2722,Garden District,2026-02-07T16:20:11.623881,open,Sample crime incident 88
+89,drug,32.3697,-86.27120000000001,Downtown,2026-02-06T16:20:11.623885,closed,Sample crime incident 89
+90,other,32.3707,-86.2702,Capitol Heights,2026-02-05T16:20:11.623888,investigating,Sample crime incident 90
+91,burglary,32.3617,-86.2792,Oak Park,2026-03-06T16:20:11.623892,open,Sample crime incident 91
+92,assault,32.3627,-86.2782,Garden District,2026-03-05T16:20:11.623895,closed,Sample crime incident 92
+93,theft,32.3637,-86.27720000000001,Downtown,2026-03-04T16:20:11.623898,investigating,Sample crime incident 93
+94,drug,32.3647,-86.2762,Capitol Heights,2026-03-03T16:20:11.623902,open,Sample crime incident 94
+95,other,32.3657,-86.2752,Oak Park,2026-03-02T16:20:11.623905,closed,Sample crime incident 95
+96,burglary,32.3667,-86.27420000000001,Garden District,2026-03-01T16:20:11.623909,investigating,Sample crime incident 96
+97,assault,32.3677,-86.2732,Downtown,2026-02-28T16:20:11.623917,open,Sample crime incident 97
+98,theft,32.3687,-86.2722,Capitol Heights,2026-02-27T16:20:11.623921,closed,Sample crime incident 98
+99,drug,32.3697,-86.27120000000001,Oak Park,2026-02-26T16:20:11.623924,investigating,Sample crime incident 99
+100,other,32.3707,-86.2702,Garden District,2026-02-25T16:20:11.623927,open,Sample crime incident 100

@@ -1,0 +1,195 @@
+# backend/api/routers/predictions.py
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
+from typing import Optional, List
+from ..models.schemas import PredictionsResponse, RiskPrediction
+from ..core.database import get_db
+from datetime import datetime, timedelta
+import random
+import pickle
+from pathlib import Path
+import sys
+import os
+
+# Add ML engine to path
+sys.path.append(os.path.join(os.path.dirname(__file__), '../../..'))
+
+router = APIRouter()
+
+# Global model cache
+_model_data = None
+MODEL_PATH = Path("ml-engine/models/xgb_model.pkl")
+
+def get_model():
+    """Load and cache the ML model"""
+    global _model_data
+    if _model_data is None and MODEL_PATH.exists():
+        try:
+            with open(MODEL_PATH, 'rb') as f:
+                _model_data = pickle.load(f)
+            print("✅ ML model loaded successfully")
+        except Exception as e:
+            print(f"❌ Failed to load ML model: {e}")
+            _model_data = None
+    return _model_data
+
+@router.get("/predictions", response_model=PredictionsResponse)
+async def get_risk_predictions(
+    risk_level: Optional[str] = Query(None, description="Filter by risk level"),
+    forecast_hours: int = Query(24, ge=1, le=168, description="Forecast hours (24, 48, or 168)"),
+    limit: int = Query(100, ge=1, le=1000, description="Number of records to return"),
+    offset: int = Query(0, ge=0, description="Number of records to skip"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get risk predictions for Montgomery areas.
+    Uses trained ML model with SHAP explainability.
+    Falls back to mock data if model unavailable.
+    """
+    try:
+        # Try to use ML model first
+        model_data = get_model()
+        
+        if model_data:
+            predictions = _generate_ml_predictions(model_data, risk_level, forecast_hours, limit, offset)
+        else:
+            # Fallback to mock data
+            predictions = _generate_mock_predictions(risk_level, forecast_hours, limit, offset)
+        
+        return PredictionsResponse(data=predictions, total=len(predictions))
+        
+    except Exception as e:
+        print(f"❌ Predictions endpoint error: {e}")
+        # Return empty response on error
+        return PredictionsResponse(data=[], total=0)
+
+def _generate_ml_predictions(
+    model_data: dict,
+    risk_level_filter: Optional[str],
+    forecast_hours: int,
+    limit: int,
+    offset: int
+) -> List[RiskPrediction]:
+    """Generate predictions using ML model"""
+    try:
+        from ml_engine.features.feature_engineer import create_grid_predictions
+        
+        # Generate predictions for all grid cells
+        predictions_df = create_grid_predictions(model_data)
+        
+        # Convert to RiskPrediction objects
+        predictions = []
+        for _, row in predictions_df.iterrows():
+            prediction = RiskPrediction(
+                gridCellId=row['gridCellId'],
+                latitude=row['latitude'],
+                longitude=row['longitude'],
+                riskLevel=row['riskLevel'],
+                confidenceScore=row['confidenceScore'],
+                forecastHours=24 if forecast_hours <= 24 else (48 if forecast_hours <= 48 else 168),
+                shapFeatures=row['shapFeatures'],
+                generatedAt=datetime.fromisoformat(row['generatedAt'])
+            )
+            predictions.append(prediction)
+        
+        # Apply filters
+        if risk_level_filter:
+            predictions = [p for p in predictions if p.riskLevel.lower() == risk_level_filter.lower()]
+        
+        # Apply pagination
+        start_idx = offset
+        end_idx = start_idx + limit
+        
+        return predictions[start_idx:end_idx]
+        
+    except Exception as e:
+        print(f"❌ ML prediction failed: {e}")
+        # Fallback to mock data
+        return _generate_mock_predictions(risk_level_filter, forecast_hours, limit, offset)
+
+def _generate_mock_predictions(
+    risk_level_filter: Optional[str],
+    forecast_hours: int,
+    limit: int,
+    offset: int
+) -> List[RiskPrediction]:
+    """Generate mock risk prediction data"""
+    
+    # Define Montgomery area coordinates for grid generation
+    montgomery_bounds = {
+        'min_lat': 32.3000,
+        'max_lat': 32.4000,
+        'min_lon': -86.3500,
+        'max_lon': -86.2000
+    }
+    
+    # Generate grid cells
+    grid_size = 0.01  # Approximately 1km grid
+    predictions = []
+    
+    lat = montgomery_bounds['min_lat']
+    while lat <= montgomery_bounds['max_lat']:
+        lon = montgomery_bounds['min_lon']
+        while lon <= montgomery_bounds['max_lon']:
+            # Generate risk prediction for this grid cell
+            risk_level = _calculate_mock_risk_level(lat, lon)
+            
+            # Apply filter if specified
+            if risk_level_filter and risk_level_filter.lower() != risk_level.lower():
+                lon += grid_size
+                continue
+            
+            grid_id = f"grid_{int(lat*1000)}_{int(lon*1000)}"
+            
+            prediction = RiskPrediction(
+                gridCellId=grid_id,
+                latitude=lat,
+                longitude=lon,
+                riskLevel=risk_level,
+                confidenceScore=random.uniform(0.6, 0.95),
+                forecastHours=24 if forecast_hours <= 24 else (48 if forecast_hours <= 48 else 168),
+                shapFeatures=_generate_mock_shap_features(),
+                generatedAt=datetime.now()
+            )
+            
+            predictions.append(prediction)
+            lon += grid_size
+        lat += grid_size
+    
+    # Apply pagination
+    start_idx = offset
+    end_idx = start_idx + limit
+    paginated_predictions = predictions[start_idx:end_idx]
+    
+    return paginated_predictions
+
+def _calculate_mock_risk_level(lat: float, lon: float) -> str:
+    """Calculate mock risk level based on location"""
+    # Simulate higher risk in downtown area
+    downtown_center = (32.3617, -86.2792)
+    distance_to_downtown = ((lat - downtown_center[0])**2 + (lon - downtown_center[1])**2)**0.5
+    
+    # Higher probability of critical/high risk closer to downtown
+    if distance_to_downtown < 0.02:
+        return random.choice(['critical', 'high', 'high', 'medium'])
+    elif distance_to_downtown < 0.05:
+        return random.choice(['high', 'medium', 'medium', 'low'])
+    else:
+        return random.choice(['medium', 'low', 'low'])
+
+def _generate_mock_shap_features() -> dict:
+    """Generate mock SHAP feature importance values"""
+    features = {
+        'crime_density_24h': random.uniform(0.1, 0.8),
+        'crime_density_7d': random.uniform(0.1, 0.7),
+        'time_of_day': random.uniform(0.0, 0.3),
+        'day_of_week': random.uniform(0.0, 0.2),
+        'proximity_to_police': random.uniform(-0.3, 0.1),
+        'population_density': random.uniform(0.1, 0.6),
+        'lighting_level': random.uniform(-0.2, 0.2),
+        'weather_condition': random.uniform(-0.1, 0.3),
+        'nearby_businesses': random.uniform(0.0, 0.4),
+        'historical_crime_rate': random.uniform(0.2, 0.8)
+    }
+    
+    return features
