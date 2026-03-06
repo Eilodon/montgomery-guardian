@@ -1,21 +1,20 @@
-// ai-agents/src/agents/vision_agent.ts
-import GoogleGenerativeAI from 'google-generative-ai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Initialize Google Generative AI for direct Vision API calls
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-const visionModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+const visionModel = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
 
 // Vision analysis function
-export async function analyzeVisionImage(input: {
+export async function visionAnalysisFlow(input: {
   imageBase64: string;
   mimeType: 'image/jpeg' | 'image/png' | 'image/webp';
   lat?: number;
   lng?: number;
 }) {
   try {
-    console.log('Vision analysis started:', { 
-      mimeType: input.mimeType, 
-      hasLocation: !!(input.lat && input.lng) 
+    console.log('Vision analysis started:', {
+      mimeType: input.mimeType,
+      hasLocation: !!(input.lat && input.lng)
     });
 
     // Prepare the image part
@@ -84,17 +83,17 @@ Return JSON only (no markdown, no explanation):
     // Ensure confidence is within valid range
     parsedResult.confidence = Math.max(0, Math.min(1, parsedResult.confidence));
 
-    console.log('Vision analysis completed:', { 
+    console.log('Vision analysis completed:', {
       incidentType: parsedResult.incidentType,
       severity: parsedResult.severity,
-      confidence: parsedResult.confidence 
+      confidence: parsedResult.confidence
     });
 
     return parsedResult;
-      
+
   } catch (error) {
     console.error('Vision analysis failed:', error);
-    
+
     // Fallback response for when vision analysis fails
     return {
       incidentType: 'other',

@@ -32,14 +32,16 @@ const ToggleGroupContext = React.createContext<{
 const ToggleGroup = React.forwardRef<
   React.ElementRef<typeof ToggleGroupPrimitive.Root>,
   React.ComponentPropsWithoutRef<typeof ToggleGroupPrimitive.Root> &
-    VariantProps<typeof toggleGroupVariants>
+  VariantProps<typeof toggleGroupVariants> & {
+    size?: "default" | "sm" | "lg";
+  }
 >(({ className, variant, size, children, ...props }, ref) => (
   <ToggleGroupPrimitive.Root
     ref={ref}
     className={cn(toggleGroupVariants({ variant, className }))}
     {...props}
   >
-    <ToggleGroupContext.Provider value={{ variant, size }}>
+    <ToggleGroupContext.Provider value={{ variant: variant || undefined, size: size || undefined }}>
       {children}
     </ToggleGroupContext.Provider>
   </ToggleGroupPrimitive.Root>
@@ -66,12 +68,12 @@ const ToggleGroupItem = React.forwardRef<
             "bg-transparent hover:bg-slate-100 hover:text-slate-900 data-[state=on]:bg-slate-900 data-[state=on]:text-slate-50",
           outline:
             "border border-slate-200 bg-transparent hover:bg-slate-100 hover:text-slate-900 data-[state=on]:bg-slate-900 data-[state=on]:text-slate-50",
-        }[context.variant || variant],
+        }[(context.variant || variant || "default") as "default" | "outline"],
         {
           default: "h-10 px-3",
           sm: "h-9 px-2.5",
           lg: "h-11 px-5",
-        }[context.size || size],
+        }[(context.size || size || "default") as "default" | "sm" | "lg"],
         className
       )}
       {...props}

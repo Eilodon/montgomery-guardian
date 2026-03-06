@@ -51,11 +51,14 @@ export interface AgentMessage {
   content: string;
   agentType: 'safety_intel' | 'service_311' | 'vision' | 'web_scraper';
   timestamp: string;
+  confidence?: number; // AI confidence score
   metadata?: {
     safetyScore?: 'A' | 'B' | 'C' | 'D' | 'F';
     mapCenter?: [number, number];
     incidents?: CrimeIncident[];
     requests311?: ServiceRequest311[];
+    imageUrl?: string; // For vision analysis
+    analysisResult?: VisionAnalysisResult; // Vision analysis results
   };
 }
 

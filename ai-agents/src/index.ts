@@ -1,13 +1,13 @@
-// ai-agents/src/index.ts
+import dotenv from 'dotenv';
+// Load environment variables immediately to avoid hoisting issues with imports
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
 import { orchestratorFlow } from './agents/orchestrator';
 import { visionAnalysisFlow } from './agents/vision_agent';
 
-// Load environment variables
-dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -34,8 +34,8 @@ app.use((req, res, next) => {
 
 // Health check endpoint
 app.get('/health', (_, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     service: 'ai-agents',
     timestamp: new Date().toISOString(),
     version: '1.0.0'
@@ -46,18 +46,18 @@ app.get('/health', (_, res) => {
 app.post('/chat', async (req, res) => {
   try {
     console.log('Chat request received:', { body: req.body });
-    
+
     const result = await orchestratorFlow(req.body);
-    
-    console.log('Chat response generated:', { 
+
+    console.log('Chat response generated:', {
       agentType: result.agentType,
-      contentLength: result.content?.length || 0 
+      contentLength: result.content?.length || 0
     });
-    
+
     res.json(result);
   } catch (err: any) {
     console.error('Chat endpoint error:', err);
-    
+
     // Graceful error handling
     const errorResponse = {
       error: err.message || 'An unexpected error occurred',
@@ -65,7 +65,7 @@ app.post('/chat', async (req, res) => {
       content: 'I apologize, but I\'m experiencing technical difficulties. Please try again later.',
       timestamp: new Date().toISOString()
     };
-    
+
     res.status(500).json(errorResponse);
   }
 });
@@ -74,27 +74,27 @@ app.post('/chat', async (req, res) => {
 app.post('/vision/analyze', async (req, res) => {
   try {
     console.log('Vision analysis request received');
-    
+
     const { imageBase64, mimeType, lat, lng } = req.body;
-    
+
     // Validate required fields
     if (!imageBase64 || !mimeType) {
       return res.status(400).json({
         error: 'Missing required fields: imageBase64 and mimeType are required'
       });
     }
-    
+
     const result = await visionAnalysisFlow({ imageBase64, mimeType, lat, lng });
-    
-    console.log('Vision analysis completed:', { 
+
+    console.log('Vision analysis completed:', {
       incidentType: result.incidentType,
-      confidence: result.confidence 
+      confidence: result.confidence
     });
-    
+
     res.json(result);
   } catch (err: any) {
     console.error('Vision analysis error:', err);
-    
+
     // Graceful error handling
     const errorResponse = {
       error: err.message || 'Vision analysis failed',
@@ -108,7 +108,7 @@ app.post('/vision/analyze', async (req, res) => {
         suggestedPriority: 'Normal'
       }
     };
-    
+
     res.status(500).json(errorResponse);
   }
 });
@@ -124,7 +124,7 @@ app.use('*', (_, res) => {
 // Global error handler
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('Global error handler:', err);
-  
+
   res.status(500).json({
     error: 'Internal server error',
     message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'

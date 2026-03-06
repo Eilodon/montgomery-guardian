@@ -315,6 +315,8 @@ export function VisionChat({
             accept="image/*"
             onChange={handleFileInputChange}
             className="hidden"
+            aria-label="Upload image file"
+            placeholder="Upload image"
           />
           
           <div className="text-center">
@@ -345,6 +347,8 @@ export function VisionChat({
               <button
                 onClick={removeImage}
                 className="text-slate-400 hover:text-red-400 transition-colors"
+                aria-label="Remove image"
+                title="Remove image"
               >
                 <X className="w-4 h-4" />
               </button>

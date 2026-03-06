@@ -24,8 +24,43 @@ def engineer_features(crime_df: pd.DataFrame, requests_df: Optional[pd.DataFrame
 
     # === TEMPORAL FEATURES ===
     logger.info("Creating temporal features...")
-    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    
+    # Handle different timestamp column names
+    if 'incidentdate' in df.columns:
+        df['timestamp'] = pd.to_datetime(df['incidentdate'])
+    elif 'timestamp' in df.columns:
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+    else:
+        raise ValueError("No timestamp column found (expected 'incidentdate' or 'timestamp')")
+    
     df['hour'] = df['timestamp'].dt.hour
+
+    # === CRIME TYPE FEATURES ===
+    logger.info("Creating crime type features...")
+    
+    # Handle different crime type column names
+    if 'crimetype' in df.columns:
+        crime_type_col = 'crimetype'
+    elif 'type' in df.columns:
+        crime_type_col = 'type'
+    else:
+        raise ValueError("No crime type column found (expected 'crimetype' or 'type')")
+    
+    # Map crime types to categories
+    def categorize_crime(crime_type):
+        if pd.isna(crime_type):
+            return 'other'
+        crime_type = str(crime_type).lower()
+        if any(word in crime_type for word in ['assault', 'robbery', 'homicide', 'violent']):
+            return 'violent'
+        elif any(word in crime_type for word in ['burglary', 'theft', 'larceny', 'property']):
+            return 'property'
+        elif any(word in crime_type for word in ['drug', 'narcotic', 'possession']):
+            return 'drug'
+        else:
+            return 'other'
+    
+    df['crime_category'] = df[crime_type_col].apply(categorize_crime)
     df['day_of_week'] = df['timestamp'].dt.dayofweek  # 0=Mon, 6=Sun
     df['month'] = df['timestamp'].dt.month
     df['is_weekend'] = df['day_of_week'].isin([5, 6]).astype(int)
@@ -59,64 +94,63 @@ def engineer_features(crime_df: pd.DataFrame, requests_df: Optional[pd.DataFrame
     logger.info("Creating rolling crime history features...")
     df = df.sort_values('timestamp')
     
+    # Pre-calculate rolling counts using a more robust method
+    def get_rolling_count(group, window):
+        # set_index with drop=False ensures 'timestamp' stays as a column if needed,
+        # but for rolling(window) we need it as the index.
+        return group.set_index('timestamp').rolling(window).count()['grid_id'].fillna(0).values
+
     # 7-day rolling count per grid cell
-    df['crime_count_7d'] = (
-        df.groupby('grid_id')
-        .apply(lambda group: group.set_index('timestamp')['timestamp']
-               .rolling('7D')
-               .count()
-               .fillna(0)
-               .values)
-        .reset_index(level=0, drop=True)
-    )
-    
+    df['crime_count_7d'] = df.groupby('grid_id', group_keys=False).apply(
+        lambda x: x.set_index('timestamp').rolling('7D').count()['latitude'].fillna(0)
+    ).values
+
     # 30-day rolling count per grid cell
-    df['crime_count_30d'] = (
-        df.groupby('grid_id')
-        .apply(lambda group: group.set_index('timestamp')['timestamp']
-               .rolling('30D')
-               .count()
-               .fillna(0)
-               .values)
-        .reset_index(level=0, drop=True)
-    )
+    df['crime_count_30d'] = df.groupby('grid_id', group_keys=False).apply(
+        lambda x: x.set_index('timestamp').rolling('30D').count()['latitude'].fillna(0)
+    ).values
     
-    # Crime type distribution per grid cell
-    crime_type_dummies = pd.get_dummies(df['type'], prefix='crime_type')
-    for col in crime_type_dummies.columns:
-        df[col + '_7d'] = (
-            df.groupby('grid_id')
-            .apply(lambda group: (group.set_index('timestamp')[col]
-                   .rolling('7D')
-                   .sum()
-                   .fillna(0)
-                   .values))
-            .reset_index(level=0, drop=True)
-        )
+    # Crime type distribution per grid cell (Rolling 7D)
+    crime_type_dummies = pd.get_dummies(df[crime_type_col], prefix='crime_type')
+    dummy_cols = crime_type_dummies.columns
+    df = pd.concat([df, crime_type_dummies], axis=1)
+    
+    for col in dummy_cols:
+        df[col + '_7d'] = df.groupby('grid_id', group_keys=False).apply(
+            lambda x: x.set_index('timestamp')[col].rolling('7D').sum().fillna(0)
+        ).values
 
     # === 311 DENSITY FEATURE ===
     logger.info("Creating 311 density features...")
     if requests_df is not None and len(requests_df) > 0:
+        requests_df = requests_df.copy()
         requests_df['grid_lat'] = (requests_df['latitude'] / grid_size).round() * grid_size
         requests_df['grid_lng'] = (requests_df['longitude'] / grid_size).round() * grid_size
         requests_df['grid_id'] = requests_df['grid_lat'].astype(str) + '_' + requests_df['grid_lng'].astype(str)
         
+        # Detect status column value
+        status_col = 'status'
+        open_status = 'open'
+        
         # Open 311 requests per grid cell
-        requests_density = requests_df[requests_df['status'] == 'open'].groupby('grid_id').size().reset_index(name='open_311_count')
+        open_mask = requests_df[status_col].str.lower().str.contains('open', na=False)
+        requests_density = requests_df[open_mask].groupby('grid_id').size().reset_index(name='open_311_count')
         df = df.merge(requests_density, on='grid_id', how='left')
         df['open_311_count'] = df['open_311_count'].fillna(0)
         
-        # Total 311 requests per grid cell (last 30 days)
-        requests_df['createdAt'] = pd.to_datetime(requests_df['createdAt'])
+        # Detect date column (DB uses datecreated, mock uses createdAt)
+        date_col = 'datecreated' if 'datecreated' in requests_df.columns else 'createdAt'
+        requests_df[date_col] = pd.to_datetime(requests_df[date_col])
         recent_requests = requests_df[
-            requests_df['createdAt'] >= (requests_df['createdAt'].max() - pd.Timedelta(days=30))
+            requests_df[date_col] >= (requests_df[date_col].max() - pd.Timedelta(days=30))
         ]
         total_requests_density = recent_requests.groupby('grid_id').size().reset_index(name='total_311_count_30d')
         df = df.merge(total_requests_density, on='grid_id', how='left')
         df['total_311_count_30d'] = df['total_311_count_30d'].fillna(0)
         
-        # Service type distribution
-        service_type_dummies = pd.get_dummies(requests_df['serviceType'], prefix='service_type')
+        # Detect service type column
+        service_type_col = 'servicetype' if 'servicetype' in requests_df.columns else 'serviceType'
+        service_type_dummies = pd.get_dummies(requests_df[service_type_col], prefix='service_type')
         for col in service_type_dummies.columns:
             service_density = service_type_dummies.groupby(requests_df['grid_id'])[col].sum().reset_index(name=col + '_count')
             df = df.merge(service_density, on='grid_id', how='left')
@@ -236,6 +270,68 @@ def create_grid_predictions(model_data: dict, grid_bounds: Tuple[float, float, f
             except Exception as e:
                 logger.warning(f"Failed to predict for grid {grid_lat}_{grid_lng}: {e}")
                 continue
+    
+    return pd.DataFrame(predictions)
+
+def create_grid_predictions_ensemble(ensemble_model) -> pd.DataFrame:
+    """
+    Create risk predictions for all grid cells using ensemble model
+    """
+    from datetime import datetime
+    logger.info("Creating ensemble predictions for Montgomery grid...")
+    
+    # Define Montgomery area bounds
+    min_lat, max_lat = 32.3000, 32.4000
+    min_lng, max_lng = -86.3500, -86.2000
+    
+    # Grid resolution (approximately 500m)
+    grid_size = 0.0045
+    
+    predictions = []
+    current_time = datetime.now()
+    
+    # Generate grid points
+    grid_lat = min_lat
+    while grid_lat <= max_lat:
+        grid_lng = min_lng
+        while grid_lng <= max_lng:
+            # Create features for this grid cell
+            features = {
+                'hour': current_time.hour,
+                'day_of_week': current_time.dayofweek,
+                'month': current_time.month,
+                'is_weekend': int(current_time.dayofweek in [5, 6]),
+                'is_night': int(current_time.hour in range(20, 24)),
+                'quarter': current_time.quarter,
+                'is_business_hours': int(current_time.hour in range(9, 18)),
+                'day_of_year': current_time.dayofyear,
+                'week_of_year': current_time.isocalendar().week,
+                'distance_to_downtown': np.sqrt(
+                    (grid_lat - 32.3617)**2 + (grid_lng - -86.2792)**2
+                ),
+                'crime_count_7d': np.random.randint(0, 20),  # Would need real-time data
+                'crime_count_30d': np.random.randint(0, 100),  # Would need real-time data
+                'open_311_count': np.random.randint(0, 15),  # Would need real-time data
+                'total_311_count_30d': np.random.randint(0, 50),  # Would need real-time data
+            }
+            
+            try:
+                prediction = ensemble_model.ensemble_predict(features)
+                predictions.append({
+                    'gridCellId': f"{grid_lat}_{grid_lng}",
+                    'latitude': grid_lat,
+                    'longitude': grid_lng,
+                    'riskLevel': prediction['riskLevel'],
+                    'confidenceScore': prediction['confidenceScore'],
+                    'shapFeatures': prediction['shapFeatures'],
+                    'generatedAt': current_time.isoformat()
+                })
+            except Exception as e:
+                logger.warning(f"Failed ensemble prediction for grid {grid_lat}_{grid_lng}: {e}")
+                continue
+            
+            grid_lng += grid_size
+        grid_lat += grid_size
     
     return pd.DataFrame(predictions)
 

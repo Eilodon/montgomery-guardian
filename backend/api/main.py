@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
 
-from .routers import crime, requests, predictions, alerts, chat, vision
+from .routers import crime, requests, predictions, alerts, chat, vision, kpis
 from .core.config import settings
 from etl.scheduler import start_scheduler
 
@@ -36,6 +36,7 @@ app.include_router(predictions.router, prefix="/api/v1")
 app.include_router(alerts.router, prefix="/api/v1")
 app.include_router(chat.router, prefix="/api/v1")
 app.include_router(vision.router, prefix="/api/v1")
+app.include_router(kpis.router, prefix="/api/v1")
 
 @app.get("/health")
 async def health_check():

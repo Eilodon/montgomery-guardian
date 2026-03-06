@@ -17,19 +17,40 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '../../..'))
 router = APIRouter()
 
 # Global model cache
-_model_data = None
-MODEL_PATH = Path("ml-engine/models/xgb_model.pkl")
+_ensemble_model = None
+XGB_MODEL_PATH = Path("ml-engine/models/xgb_model.pkl")
+LSTM_MODEL_PATH = Path("ml-engine/models/lstm_weights.pt")
+ENSEMBLE_MODEL_PATH = Path("ml-engine/models/ensemble_model.pkl")
 
-def get_model():
-    """Load and cache the ML model"""
-    global _model_data
-    if _model_data is None and MODEL_PATH.exists():
+def get_ensemble_model():
+    """Load and cache the ensemble ML model"""
+    global _ensemble_model
+    if _ensemble_model is None and ENSEMBLE_MODEL_PATH.exists():
         try:
-            with open(MODEL_PATH, 'rb') as f:
-                _model_data = pickle.load(f)
-            print("✅ ML model loaded successfully")
+            # Import the ensemble model
+            from ml_engine.models.ensemble_model import load_ensemble_model
+            
+            _ensemble_model = load_ensemble_model(
+                str(XGB_MODEL_PATH),
+                str(LSTM_MODEL_PATH), 
+                str(ENSEMBLE_MODEL_PATH)
+            )
+            print("✅ Ensemble ML model loaded successfully")
         except Exception as e:
-            print(f"❌ Failed to load ML model: {e}")
+            print(f"❌ Failed to load ensemble ML model: {e}")
+            _ensemble_model = None
+    return _ensemble_model
+
+def get_xgb_model():
+    """Load and cache the XGBoost model (fallback)"""
+    global _model_data
+    if _model_data is None and XGB_MODEL_PATH.exists():
+        try:
+            with open(XGB_MODEL_PATH, 'rb') as f:
+                _model_data = pickle.load(f)
+            print("✅ XGBoost model loaded successfully")
+        except Exception as e:
+            print(f"❌ Failed to load XGBoost model: {e}")
             _model_data = None
     return _model_data
 
@@ -43,18 +64,23 @@ async def get_risk_predictions(
 ):
     """
     Get risk predictions for Montgomery areas.
-    Uses trained ML model with SHAP explainability.
-    Falls back to mock data if model unavailable.
+    Uses trained ensemble ML model with SHAP explainability.
+    Falls back to XGBoost model or mock data if models unavailable.
     """
     try:
-        # Try to use ML model first
-        model_data = get_model()
+        # Try to use ensemble ML model first
+        ensemble_model = get_ensemble_model()
         
-        if model_data:
-            predictions = _generate_ml_predictions(model_data, risk_level, forecast_hours, limit, offset)
+        if ensemble_model:
+            predictions = _generate_ensemble_predictions(ensemble_model, risk_level, forecast_hours, limit, offset)
         else:
-            # Fallback to mock data
-            predictions = _generate_mock_predictions(risk_level, forecast_hours, limit, offset)
+            # Try XGBoost model as fallback
+            xgb_model_data = get_xgb_model()
+            if xgb_model_data:
+                predictions = _generate_ml_predictions(xgb_model_data, risk_level, forecast_hours, limit, offset)
+            else:
+                # Fallback to mock data
+                predictions = _generate_mock_predictions(risk_level, forecast_hours, limit, offset)
         
         return PredictionsResponse(data=predictions, total=len(predictions))
         
@@ -62,6 +88,65 @@ async def get_risk_predictions(
         print(f"❌ Predictions endpoint error: {e}")
         # Return empty response on error
         return PredictionsResponse(data=[], total=0)
+
+@router.get("/heatmap", response_model=PredictionsResponse)
+async def get_heatmap_data(
+    forecast_hours: int = Query(24, ge=1, le=168),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all risk predictions for heatmap visualization.
+    """
+    return await get_risk_predictions(limit=500, forecast_hours=forecast_hours, db=db)
+
+def _generate_ensemble_predictions(
+    ensemble_model,
+    risk_level_filter: Optional[str],
+    forecast_hours: int,
+    limit: int,
+    offset: int
+) -> List[RiskPrediction]:
+    """Generate predictions using ensemble ML model"""
+    try:
+        from ml_engine.features.feature_engineer import create_grid_predictions_ensemble
+        
+        # Generate predictions for all grid cells using ensemble
+        predictions_df = create_grid_predictions_ensemble(ensemble_model)
+        
+        # Convert to RiskPrediction objects
+        predictions = []
+        for _, row in predictions_df.iterrows():
+            prediction = RiskPrediction(
+                gridCellId=row['gridCellId'],
+                latitude=row['latitude'],
+                longitude=row['longitude'],
+                riskLevel=row['riskLevel'],
+                confidenceScore=row['confidenceScore'],
+                forecastHours=24 if forecast_hours <= 24 else (48 if forecast_hours <= 48 else 168),
+                shapFeatures=row['shapFeatures'],
+                generatedAt=datetime.fromisoformat(row['generatedAt'])
+            )
+            predictions.append(prediction)
+        
+        # Apply filters
+        if risk_level_filter:
+            predictions = [p for p in predictions if p.riskLevel.lower() == risk_level_filter.lower()]
+        
+        # Apply pagination
+        start_idx = offset
+        end_idx = start_idx + limit
+        
+        return predictions[start_idx:end_idx]
+        
+    except Exception as e:
+        print(f"❌ Ensemble prediction failed: {e}")
+        # Fallback to XGBoost model
+        xgb_model_data = get_xgb_model()
+        if xgb_model_data:
+            return _generate_ml_predictions(xgb_model_data, risk_level_filter, forecast_hours, limit, offset)
+        else:
+            # Fallback to mock data
+            return _generate_mock_predictions(risk_level_filter, forecast_hours, limit, offset)
 
 def _generate_ml_predictions(
     model_data: dict,
@@ -191,5 +276,42 @@ def _generate_mock_shap_features() -> dict:
         'nearby_businesses': random.uniform(0.0, 0.4),
         'historical_crime_rate': random.uniform(0.2, 0.8)
     }
-    
-    return features
+
+@router.get("/explain")
+async def get_shap_explainability():
+    """
+    Get SHAP explainability data for ML model predictions.
+    Shows feature importance and contribution to crime risk predictions.
+    """
+    try:
+        # Try to load SHAP data from file
+        shap_data_path = Path("ml-engine/models/shap_data.json")
+        if shap_data_path.exists():
+            import json
+            with open(shap_data_path, 'r') as f:
+                return json.load(f)
+        else:
+            # Fallback to mock SHAP data
+            return {
+                "features": [
+                    {"name": "Hour of Day", "importance": 0.15, "category": "temporal"},
+                    {"name": "Day of Week", "importance": 0.12, "category": "temporal"},
+                    {"name": "Distance to Downtown", "importance": 0.18, "category": "spatial"},
+                    {"name": "Crime Count (7 days)", "importance": 0.22, "category": "temporal"},
+                    {"name": "311 Requests (30 days)", "importance": 0.20, "category": "311"},
+                    {"name": "Weather Temperature", "importance": 0.08, "category": "weather"},
+                    {"name": "Is Weekend", "importance": 0.05, "category": "temporal"}
+                ],
+                "modelType": "ensemble",
+                "totalFeatures": 7,
+                "generatedAt": datetime.now().isoformat()
+            }
+    except Exception as e:
+        print(f"❌ Failed to load SHAP data: {e}")
+        # Return minimal fallback
+        return {
+            "features": [],
+            "modelType": "ensemble",
+            "totalFeatures": 0,
+            "generatedAt": datetime.now().isoformat()
+        }

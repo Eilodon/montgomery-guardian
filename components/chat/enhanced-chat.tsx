@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Shield, Wrench, Camera, Globe, Loader2, Check, AlertTriangle } from "lucide-react";
+import { Send, Bot, User, Shield, Wrench, Camera, Globe, Loader2, Check, AlertTriangle, Upload, X } from "lucide-react";
 import { AgentMessage } from "@/shared/types";
+import { sendChatMessage, analyzeImage, type ChatMessage, type VisionAnalysisResult } from "@/lib/api";
 
 interface EnhancedChatProps {
   className?: string;
   onMessageSend?: (message: string, imageData?: string) => void;
-  messages: AgentMessage[];
+  messages?: AgentMessage[];
   isLoading?: boolean;
   agentType?: "safety_intel" | "service_311" | "vision" | "web_scraper" | "general";
 }
@@ -155,6 +156,8 @@ export function EnhancedChat({
         <button
           onClick={() => setShowAgentInfo(!showAgentInfo)}
           className="text-slate-400 hover:text-slate-200 transition-colors"
+          aria-label="Toggle agent info"
+          title="Toggle agent information"
         >
           <AlertTriangle className="w-4 h-4" />
         </button>
@@ -350,6 +353,8 @@ export function EnhancedChat({
             accept="image/*"
             onChange={handleImageSelect}
             className="hidden"
+            aria-label="Upload image file"
+            placeholder="Upload image"
           />
           
           <button
@@ -377,8 +382,8 @@ export function EnhancedChat({
               <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
                 <div className="flex gap-1">
                   <div className="w-2 h-2 bg-slate-500 rounded-full animate-bounce"></div>
-                  <div className="w-2 h-2 bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                  <div className="w-2 h-2 bg-slate-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                  <div className="w-2 h-2 bg-slate-500 rounded-full animate-bounce [animation-delay:0.1s]"></div>
+                  <div className="w-2 h-2 bg-slate-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
                 </div>
               </div>
             )}

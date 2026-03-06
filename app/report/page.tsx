@@ -302,14 +302,18 @@ export default function ReportPage() {
               accept="image/jpeg,image/png,image/webp"
               onChange={handleFileInput}
               className="hidden"
+              aria-label="Upload image file"
+              placeholder="Upload image"
             />
             <input
               ref={mobileFileInputRef}
               type="file"
               accept="image/*"
-              capture="environment"
+              capture="environment" /* For mobile camera access */
               onChange={handleFileInput}
               className="hidden"
+              aria-label="Take photo"
+              placeholder="Take photo"
             />
           </div>
         )}
@@ -378,6 +382,8 @@ export default function ReportPage() {
                     value={formData.serviceType}
                     onChange={(e) => setFormData(prev => ({ ...prev, serviceType: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    aria-label="Select service type"
+                    title="Service type"
                   >
                     <option value="">Select service type</option>
                     {serviceTypes.map((type) => (

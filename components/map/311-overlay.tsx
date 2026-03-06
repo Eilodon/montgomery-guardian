@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { MapboxMap, add311MarkersLayer, useMapboxMap } from "./mapbox-map";
 import { ServiceRequest311 } from "@/shared/types";
-import { Tool, Calendar, Clock, Filter, Layers, Wrench } from "lucide-react";
+import { Calendar, Clock, Filter, Layers, Wrench } from "lucide-react";
 
 interface Map311OverlayProps {
   className?: string;
@@ -119,10 +119,10 @@ const generateMoreMockData = (): ServiceRequest311[] => {
   const serviceTypes: ServiceRequest311["serviceType"][] = ["pothole", "graffiti", "trash", "flooding", "overgrown_grass", "other"];
   const statuses: ServiceRequest311["status"][] = ["open", "in_progress", "closed"];
   const streets = [
-    "Dexter Ave", "Madison Ave", "Perry St", "Commerce St", 
+    "Dexter Ave", "Madison Ave", "Perry St", "Commerce St",
     "Coosa St", "Mobile St", "Washington Ave", "Bibb St"
   ];
-  
+
   for (let i = 0; i < 30; i++) {
     additionalData.push({
       requestId: `req_${i + 9}`,
@@ -137,12 +137,12 @@ const generateMoreMockData = (): ServiceRequest311[] => {
       estimatedResolutionDays: Math.floor(Math.random() * 7) + 1,
     });
   }
-  
+
   return additionalData;
 };
 
-export function Map311Overlay({ 
-  className = "", 
+export function Map311Overlay({
+  className = "",
   onRequestClick,
   filterServiceType = "all",
   filterStatus = "all",
@@ -158,11 +158,11 @@ export function Map311Overlay({
   useEffect(() => {
     const loadServiceRequests = async () => {
       setIsLoading(true);
-      
+
       try {
         // Try to load real data from API
         const response = await fetch("/api/v1/requests-311?limit=100");
-        
+
         if (response.ok) {
           const apiData = await response.json();
           const requests = apiData.data || [];
@@ -262,24 +262,24 @@ export function Map311Overlay({
           <Wrench className="w-4 h-4 text-blue-400" />
           311 Service Requests
         </h3>
-        
+
         {/* Status Statistics */}
         <div className="space-y-2 mb-3">
           <div className="flex justify-between items-center">
             <span className="text-xs text-slate-400">Total Requests</span>
             <span className="text-sm font-medium text-slate-100">{stats.total}</span>
           </div>
-          
+
           <div className="flex justify-between items-center">
             <span className="text-xs text-slate-400">Open</span>
             <span className="text-sm font-medium text-red-400">{stats.open}</span>
           </div>
-          
+
           <div className="flex justify-between items-center">
             <span className="text-xs text-slate-400">In Progress</span>
             <span className="text-sm font-medium text-yellow-400">{stats.inProgress}</span>
           </div>
-          
+
           <div className="flex justify-between items-center">
             <span className="text-xs text-slate-400">Closed</span>
             <span className="text-sm font-medium text-green-400">{stats.closed}</span>
@@ -310,11 +310,10 @@ export function Map311Overlay({
         <div className="mt-3 pt-3 border-t border-slate-700">
           <button
             onClick={() => setLayerVisible(!layerVisible)}
-            className={`flex items-center gap-2 w-full px-3 py-2 rounded text-xs font-medium transition-colors ${
-              layerVisible
+            className={`flex items-center gap-2 w-full px-3 py-2 rounded text-xs font-medium transition-colors ${layerVisible
                 ? "bg-blue-500 text-white"
                 : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-            }`}
+              }`}
           >
             <Layers className="w-3 h-3" />
             {layerVisible ? "Hide Layer" : "Show Layer"}
@@ -363,7 +362,7 @@ export function Map311Overlay({
               ×
             </button>
           </div>
-          
+
           <div className="space-y-2 text-xs">
             <div>
               <span className="text-slate-400">Request ID:</span>
@@ -375,11 +374,10 @@ export function Map311Overlay({
             </div>
             <div>
               <span className="text-slate-400">Status:</span>
-              <span className={`ml-2 capitalize ${
-                selectedRequest.status === "open" ? "text-red-400" :
-                selectedRequest.status === "in_progress" ? "text-yellow-400" :
-                "text-green-400"
-              }`}>
+              <span className={`ml-2 capitalize ${selectedRequest.status === "open" ? "text-red-400" :
+                  selectedRequest.status === "in_progress" ? "text-yellow-400" :
+                    "text-green-400"
+                }`}>
                 {selectedRequest.status.replace('_', ' ')}
               </span>
             </div>

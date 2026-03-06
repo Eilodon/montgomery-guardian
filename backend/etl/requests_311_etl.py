@@ -3,6 +3,7 @@ import asyncio
 import pandas as pd
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
+from api.core.database import SessionLocal
 from api.core.redis import redis_client
 from .arcgis_client import fetch_arcgis_dataset
 
@@ -146,10 +147,52 @@ class Requests311ETL:
         return df
 
     async def load_requests_data(self, df: pd.DataFrame):
-        """Load transformed data to cache/database"""
-        print("💾 Loading 311 requests data to cache...")
+        """Load transformed data to database and cache"""
+        print("💾 Loading 311 requests data to database and cache...")
         
         try:
+            # 1. Store in Database
+            db = SessionLocal()
+            try:
+                from api.models.requests import ServiceRequest311
+                
+                records_added = 0
+                records_updated = 0
+                
+                for _, row in df.iterrows():
+                    existing = db.query(ServiceRequest311).filter(ServiceRequest311.objectid == int(row['requestId'])).first()
+                    
+                    if existing:
+                        existing.status = row['status']
+                        existing.datemodified = row['updatedAt']
+                        existing.description = str(row['description']) if pd.notna(row['description']) else None
+                        records_updated += 1
+                    else:
+                        request = ServiceRequest311(
+                            objectid=int(row['requestId']),
+                            servicetype=row['serviceType'],
+                            latitude=float(row['latitude']),
+                            longitude=float(row['longitude']),
+                            address=str(row['address']) if pd.notna(row['address']) else None,
+                            datecreated=row['createdAt'],
+                            datemodified=row['updatedAt'],
+                            status=row['status'],
+                            description=str(row['description']) if pd.notna(row['description']) else None,
+                            estimatedresolution=str(row['estimatedResolutionDays']) if pd.notna(row['estimatedResolutionDays']) else None,
+                            geom=f"SRID=4326;POINT({row['longitude']} {row['latitude']})"
+                        )
+                        db.add(request)
+                        records_added += 1
+                
+                db.commit()
+                print(f"💾 DB: Added {records_added}, Updated {records_updated} 311 request records")
+            except Exception as db_e:
+                print(f"❌ DB Error: {db_e}")
+                db.rollback()
+            finally:
+                db.close()
+
+            # 2. Redis logic below
             # Convert to JSON for Redis storage
             data_json = df.to_json(orient='records', date_format='iso')
             
@@ -175,7 +218,7 @@ class Requests311ETL:
             print(f"💾 Cached {len(df)} 311 request records")
             
         except Exception as e:
-            print(f"❌ Failed to cache 311 requests data: {e}")
+            print(f"❌ Failed to cache/save 311 requests data: {e}")
             raise
 
     async def get_cached_requests_data(self) -> pd.DataFrame:

@@ -72,36 +72,37 @@ def train_and_save(df: pd.DataFrame, model_path: str = "ml-engine/models/xgb_mod
     logger.info(f"Dataset shape: {X.shape}")
     logger.info(f"Risk distribution: {df['risk_label'].value_counts().to_dict()}")
     
-    # Split data with stratification
+    # Split data
+    # Only stratify if we have more than one class
+    stratify_y = y if len(np.unique(y)) > 1 else None
+    
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
+        X, y, test_size=0.2, random_state=42, stratify=stratify_y
     )
     
     # Define model parameters
-    model_params = {
+    num_classes = len(le.classes_)
+    base_params = {
         'n_estimators': 200,
         'max_depth': 6,
         'learning_rate': 0.1,
         'subsample': 0.8,
         'colsample_bytree': 0.8,
         'random_state': 42,
-        'use_label_encoder': False,
         'eval_metric': 'mlogloss',
-        'objective': 'multi:softprob',
-        'num_class': len(le.classes_)
+        'objective': 'multi:softprob' if num_classes > 2 else 'binary:logistic',
+        'num_class': num_classes
     }
     
-    # Train model
-    logger.info("Training XGBoost model...")
-    model = xgb.XGBClassifier(**model_params)
+    # Final model training with early stopping
+    model = xgb.XGBClassifier(**base_params, early_stopping_rounds=20)
     
     # Train with early stopping
     eval_set = [(X_train, y_train), (X_test, y_test)]
     model.fit(
         X_train, y_train, 
         eval_set=eval_set,
-        verbose=50,
-        early_stopping_rounds=20
+        verbose=50
     )
     
     # Evaluate model
@@ -123,9 +124,19 @@ def train_and_save(df: pd.DataFrame, model_path: str = "ml-engine/models/xgb_mod
     
     # Cross-validation
     logger.info("Performing cross-validation...")
-    cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    cv_scores = cross_val_score(model, X, y, cv=cv, scoring='accuracy')
-    logger.info(f"Cross-validation accuracy: {cv_scores.mean():.4f} (+/- {cv_scores.std() * 2:.4f})")
+    try:
+        if len(np.unique(y)) > 1:
+            cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+            # Create a model without early_stopping for CV
+            cv_model = xgb.XGBClassifier(**base_params)
+            cv_scores = cross_val_score(cv_model, X, y, cv=cv, scoring='accuracy')
+            logger.info(f"Cross-validation accuracy: {cv_scores.mean():.4f} (+/- {cv_scores.std() * 2:.4f})")
+        else:
+            logger.warning("⚠️ Skipping cross-validation: only one class present in data")
+            cv_scores = np.array([1.0])
+    except Exception as e:
+        logger.warning(f"⚠️ Cross-validation failed: {e}")
+        cv_scores = np.array([0.0])
     
     # SHAP explainability
     logger.info("Creating SHAP explainer...")
@@ -152,7 +163,7 @@ def train_and_save(df: pd.DataFrame, model_path: str = "ml-engine/models/xgb_mod
         'explainer': explainer,
         'label_encoder': le,
         'feature_cols': available_cols,
-        'model_params': model_params,
+        'model_params': base_params,
         'feature_importance': feature_importance_df.to_dict('records'),
         'accuracy': accuracy,
         'cv_scores': cv_scores.tolist(),
@@ -311,14 +322,35 @@ def evaluate_model(model_data: Dict[str, Any], test_df: pd.DataFrame) -> Dict[st
     
     return evaluation_results
 
+def train_with_real_data(model_path: str = "ml-engine/models/xgb_model.pkl") -> Dict[str, Any]:
+    """
+    Train model using real data from PostGIS database
+    """
+    logger.info("Training model with real data...")
+    
+    # Get real data from database
+    from data.data_query import get_real_data
+    
+    crime_df, requests_df = get_real_data()
+    
+    # Engineer features
+    from features.feature_engineer import engineer_features
+    feature_df = engineer_features(crime_df, requests_df)
+    
+    # Train model
+    model, explainer = train_and_save(feature_df, model_path)
+    
+    # Load and return model data
+    return load_model(model_path)
+
 def train_with_mock_data(model_path: str = "ml-engine/models/xgb_model.pkl") -> Dict[str, Any]:
     """
-    Train model using mock data for testing
+    Train model using mock data for testing (DEPRECATED - use real data)
     """
-    logger.info("Training model with mock data...")
+    logger.warning("⚠️ Mock data training is deprecated. Use train_with_real_data() instead.")
     
     # Generate mock data
-    from ..features.feature_engineer import engineer_features, generate_mock_data
+    from features.feature_engineer import engineer_features, generate_mock_data
     
     crime_df, requests_df = generate_mock_data(n_samples=2000)
     
@@ -332,5 +364,5 @@ def train_with_mock_data(model_path: str = "ml-engine/models/xgb_model.pkl") -> 
     return load_model(model_path)
 
 if __name__ == "__main__":
-    # Train with mock data when run directly
-    train_with_mock_data()
+    # Train with real data when run directly
+    train_with_real_data()

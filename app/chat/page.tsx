@@ -122,6 +122,14 @@ export default function ChatPage() {
     }
   };
 
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      // Navigate to vision analysis page with the file
+      window.location.href = '/vision';
+    }
+  };
+
   return (
     <div className="flex h-screen bg-white">
       {/* Mobile Sidebar Overlay */}
@@ -153,6 +161,8 @@ export default function ChatPage() {
             <button
               onClick={() => setSidebarOpen(false)}
               className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"
+              aria-label="Close sidebar"
+              title="Close sidebar"
             >
               <X className="w-5 h-5" />
             </button>
@@ -204,6 +214,8 @@ export default function ChatPage() {
           <button
             onClick={() => setSidebarOpen(true)}
             className="p-2 hover:bg-gray-100 rounded-lg"
+            aria-label="Open menu"
+            title="Open menu"
           >
             <Menu className="w-5 h-5" />
           </button>
@@ -317,7 +329,7 @@ export default function ChatPage() {
 
                     {/* Map Placeholder */}
                     {message.metadata?.mapCenter && (
-                      <div className="mt-2 bg-gray-200 rounded-lg p-4 flex items-center justify-center" style={{ width: '200px', height: '120px' }}>
+                      <div className="mt-2 bg-gray-200 rounded-lg p-4 flex items-center justify-center w-[200px] h-[120px]">
                         <div className="text-center">
                           <MapPin className="w-6 h-6 text-gray-500 mx-auto mb-1" />
                           <p className="text-xs text-gray-600">📍 Map view</p>
@@ -338,9 +350,9 @@ export default function ChatPage() {
                 <div className="flex justify-start">
                   <div className="bg-gray-100 rounded-2xl rounded-bl-sm px-4 py-3">
                     <div className="flex gap-1">
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:0ms]"></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:150ms]"></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:300ms]"></div>
                     </div>
                   </div>
                 </div>
@@ -382,11 +394,15 @@ export default function ChatPage() {
             <button
               onClick={() => fileInputRef.current?.click()}
               className="lg:hidden p-3 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label="Upload image"
+              title="Upload image"
             >
               <Camera className="w-5 h-5" />
             </button>
             <button
               className="hidden lg:flex p-3 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              aria-label="Voice input"
+              title="Voice input"
             >
               <Mic className="w-5 h-5" />
             </button>
@@ -394,6 +410,8 @@ export default function ChatPage() {
               onClick={handleSend}
               disabled={!input.trim() || isLoading}
               className="px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              aria-label="Send message"
+              title="Send message"
             >
               <Send className="w-5 h-5" />
             </button>
@@ -402,10 +420,10 @@ export default function ChatPage() {
             ref={fileInputRef}
             type="file"
             accept="image/*"
+            onChange={handleFileUpload}
             className="hidden"
-            onChange={() => {
-              window.location.href = '/report';
-            }}
+            aria-label="Upload image file"
+            placeholder="Upload image"
           />
         </div>
       </main>

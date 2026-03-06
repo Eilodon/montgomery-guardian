@@ -1,23 +1,41 @@
 // ai-agents/src/agents/safety_agent.ts
 import { z } from 'genkit';
 import { queryCrimeTool } from '../tools/crime_tool';
+import { ragService } from '../rag';
 
 export async function safetyAgent(ai: any, input: any): Promise<any> {
   try {
     console.log('Safety agent processing request:', { message: input.message });
 
     // Extract relevant information from the user's message
-    const locationContext = input.userLocation ? 
+    const locationContext = input.userLocation ?
       `User location: ${input.userLocation.lat}, ${input.userLocation.lng}` : '';
-    
+
     const historyContext = input.history && input.history.length > 0 ?
       `Recent conversation: ${input.history.slice(-2).map((h: any) => `${h.role}: ${h.content}`).join(' | ')}` : '';
+
+    // Use RAG to get relevant crime statistics and safety policies
+    let ragContext = '';
+    try {
+      const ragResult = await ragService.searchKnowledge(
+        input.message,
+        'crime_incidents',
+        3
+      );
+
+      if (ragResult.results.length > 0) {
+        ragContext = '\nRelevant crime statistics and safety information:\n' +
+          ragResult.results.map(r => `- ${r.document.substring(0, 200)}...`).join('\n');
+      }
+    } catch (ragError) {
+      console.warn('RAG search failed:', ragError);
+    }
 
     // Use tools to get relevant crime data
     let crimeData = null;
     try {
       crimeData = await queryCrimeTool({
-        neighborhood: extractNeighborhood(input.message),
+        neighborhood: extractNeighborhood(input.message) || undefined,
         limit: 10,
         userLocation: input.userLocation
       });
@@ -27,6 +45,22 @@ export async function safetyAgent(ai: any, input: any): Promise<any> {
 
     const { text } = await ai.generate({
       prompt: `You are a safety intelligence expert for Montgomery, Alabama. You have access to recent crime data and can provide safety assessments.
+
+${locationContext}
+${historyContext}
+${ragContext}
+${crimeData ? `Recent crime data: ${JSON.stringify(crimeData).substring(0, 500)}...` : ''}
+
+User question: "${input.message}"
+
+Provide a helpful response that:
+1. Addresses their specific safety concern
+2. References relevant crime statistics when available
+3. Provides safety recommendations based on data
+4. Suggests appropriate safety measures
+5. Maintains a helpful, reassuring tone
+6. Avoids causing unnecessary alarm
+7. Provides official resources when relevant
 
 ${locationContext}
 ${historyContext}
@@ -70,13 +104,13 @@ function extractNeighborhood(message: string): string | null {
     'Cloverdale', 'Old Cloverdale', 'Bellevue', 'Chisholm',
     'Highland Park', 'Tulane', 'Washington Park', 'Wyndridge'
   ];
-  
+
   const messageLower = message.toLowerCase();
   for (const neighborhood of neighborhoods) {
-    if (neighborhood.toLowerCase() in messageLower) {
+    if (messageLower.includes(neighborhood.toLowerCase())) {
       return neighborhood;
     }
   }
-  
+
   return null;
 }

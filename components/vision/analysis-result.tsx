@@ -77,10 +77,7 @@ export function AnalysisResult({ result, onSubmit, isSubmitting = false }: Analy
             <h4 className="font-medium text-blue-900 mb-2">Confidence Score:</h4>
             <div className="flex items-center gap-2">
               <div className="flex-1 bg-blue-100 rounded-full h-2">
-                <div
-                  className="bg-blue-500 h-2 rounded-full transition-all duration-500"
-                  style={{ width: `${result.confidence * 100}%` }}
-                />
+                <div className={`bg-blue-500 h-2 rounded-full transition-all duration-500`} style={{width: `${result.confidence * 100}%`}} />
               </div>
               <span className="text-sm font-medium text-blue-800">
                 {Math.round(result.confidence * 100)}%

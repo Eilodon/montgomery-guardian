@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { cn } from "@/lib/utils";
 import { LayerToggle } from "./layer-toggle";
 import { RiskZoneRibbon } from "./risk-zone-ribbon";
 import { AlertsSidebar } from "./alerts-sidebar";
 import { AnalyticsPanel } from "./analytics-panel";
 import { UnifiedMap } from "./unified-map";
+import { MapboxMap } from "./mapbox-map";
 import type { MapContainerProps, MapLayerType, RiskZone, Alert } from "./types";
+import { useHeatmapData, useActive311Requests, useLiveAlerts } from "@/lib/api";
 
 // Default risk zone data
 const defaultRiskZones: RiskZone[] = [
@@ -69,7 +71,7 @@ export function MapContainer({
   children,
   className,
   riskZones = defaultRiskZones,
-  alerts = defaultAlerts,
+  alerts = [],
   defaultLayer = "unified",
   showAlertsSidebar = true,
   showAnalyticsPanel = true,
@@ -78,6 +80,11 @@ export function MapContainer({
   const [activeLayer, setActiveLayer] = useState<MapLayerType>(defaultLayer);
   const [alertsOpen, setAlertsOpen] = useState(true);
   const [analyticsOpen, setAnalyticsOpen] = useState(true);
+
+  // Use real API data
+  const { heatmapData } = useHeatmapData();
+  const { requests: active311Requests } = useActive311Requests();
+  const { alerts: liveAlerts } = useLiveAlerts();
 
   return (
     <div
@@ -88,7 +95,39 @@ export function MapContainer({
     >
       {/* Main Map Content Area */}
       <div className="absolute inset-0 pb-[60px]">
-        {children || <UnifiedMap />}
+        {activeLayer === "unified" && children ? (
+          React.Children.map(children, (child) => {
+            if (React.isValidElement(child)) {
+              return React.cloneElement(child as any, {
+                crimeData: (heatmapData as any)?.data || [],
+                requests311: (active311Requests as any)?.data || []
+              });
+            }
+            return child;
+          })
+        ) : activeLayer === "crime" ? (
+          <MapboxMap
+            crimeData={(heatmapData as any)?.data || []}
+            showHeatmap={true}
+            show311Points={false}
+          />
+        ) : activeLayer === "311" ? (
+          <MapboxMap
+            requests311={(active311Requests as any)?.data || []}
+            showHeatmap={false}
+            show311Points={true}
+          />
+        ) : (
+          children ? React.Children.map(children, (child) => {
+            if (React.isValidElement(child)) {
+              return React.cloneElement(child as any, {
+                crimeData: (heatmapData as any)?.data || [],
+                requests311: (active311Requests as any)?.data || []
+              });
+            }
+            return child;
+          }) : <MapboxMap crimeData={(heatmapData as any)?.data || []} />
+        )}
       </div>
 
       {/* Layer Toggle Controls */}
@@ -97,7 +136,13 @@ export function MapContainer({
       {/* Left Sidebar - Alerts */}
       {showAlertsSidebar && (
         <AlertsSidebar
-          alerts={alerts}
+          alerts={liveAlerts && liveAlerts.length > 0 ? (liveAlerts as any[]).map(a => ({
+            id: a.id,
+            title: a.title,
+            description: a.summary,
+            timestamp: new Date(a.timestamp).toLocaleTimeString(),
+            severity: (a.severity as any)
+          })) : alerts}
           isOpen={alertsOpen}
           onToggle={() => setAlertsOpen(!alertsOpen)}
         />

@@ -55,37 +55,48 @@ async def _analyze_with_gemini(
     lon: Optional[float],
     description: Optional[str]
 ) -> VisionAnalysisResult:
-    """Analyze image using Gemini Vision API"""
+    """Analyze image using AI Agents service"""
     try:
-        # Import the vision agent (direct call to avoid HTTP overhead)
-        from src.agents.vision_agent import analyzeVisionImage
+        # Prepare payload
+        payload = {
+            "imageBase64": image_base64,
+            "mimeType": mime_type,
+            "lat": lat,
+            "lng": lon
+        }
         
-        # Call the vision analysis function
-        result = await analyzeVisionImage({
-            'imageBase64': image_base64,
-            'mimeType': mime_type,
-            'lat': lat,
-            'lng': lon
-        })
-        
-        # Convert to our VisionAnalysisResult format
-        return VisionAnalysisResult(
-            incidentType=result.get('incidentType', 'other'),
-            severity=result.get('severity', 'medium'),
-            confidence=result.get('confidence', 0.5),
-            description=result.get('description', 'Image analyzed successfully'),
-            suggested311Category=result.get('prefilledForm', {}).get('serviceType', 'other'),
-            prefilledForm={
-                'serviceType': result.get('prefilledForm', {}).get('serviceType', 'other'),
-                'description': result.get('prefilledForm', {}).get('description', result.get('description', '')),
-                'latitude': lat,
-                'longitude': lon,
-                'estimatedResolutionDays': _get_estimated_days(result.get('incidentType', 'other'))
-            }
-        )
+        # Call AI agents service
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(
+                f"{AI_AGENTS_URL}/vision/analyze",
+                json=payload,
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                # Convert to our VisionAnalysisResult format
+                return VisionAnalysisResult(
+                    incidentType=result.get('incidentType', 'other'),
+                    severity=result.get('severity', 'medium'),
+                    confidence=result.get('confidence', 0.5),
+                    description=result.get('description', 'Image analyzed successfully'),
+                    suggested311Category=result.get('prefilledForm', {}).get('serviceType', 'other'),
+                    prefilledForm={
+                        'serviceType': result.get('prefilledForm', {}).get('serviceType', 'other'),
+                        'description': result.get('prefilledForm', {}).get('description', result.get('description', '')),
+                        'latitude': lat,
+                        'longitude': lon,
+                        'estimatedResolutionDays': _get_estimated_days(result.get('incidentType', 'other'))
+                    }
+                )
+            else:
+                print(f"AI Agents service error: {response.status_code}")
+                raise Exception(f"AI Agents service failed with status {response.status_code}")
         
     except Exception as e:
-        print(f"Gemini Vision API error: {e}")
+        print(f"Vision analysis proxy error: {e}")
         raise e
 
 def _get_estimated_days(incident_type: str) -> int:

@@ -1,9 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { CrimeHeatmap } from "./crime-heatmap";
-import { Map311Overlay } from "./311-overlay";
-import { Layers, Map, Eye, EyeOff } from "lucide-react";
+import { MapboxMap } from "./mapbox-map";
+import { Layers, Map, Eye, EyeOff, AlertTriangle, Wrench } from "lucide-react";
 
 type MapView = "crime" | "311" | "unified";
 
@@ -29,12 +28,12 @@ function ToggleGroup({ children, value, onValueChange, className = "" }: {
   );
 }
 
-function ToggleGroupItem({ 
-  value, 
-  isActive, 
-  onClick, 
-  children, 
-  className = "" 
+function ToggleGroupItem({
+  value,
+  isActive,
+  onClick,
+  children,
+  className = ""
 }: {
   value: MapView;
   isActive?: boolean;
@@ -46,18 +45,22 @@ function ToggleGroupItem({
     <button
       value={value}
       onClick={onClick}
-      className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-        isActive
+      className={`px-3 py-1 text-xs font-medium rounded transition-colors ${isActive
           ? "bg-slate-900 text-white"
           : "text-slate-600 hover:text-slate-900 hover:bg-slate-200"
-      } ${className}`}
+        } ${className}`}
     >
       {children}
     </button>
   );
 }
 
-export function UnifiedMap() {
+interface UnifiedMapProps {
+  crimeData?: any[];
+  requests311?: any[];
+}
+
+export function UnifiedMap({ crimeData = [], requests311 = [] }: UnifiedMapProps) {
   const [activeView, setActiveView] = useState<MapView>("unified");
   const [showCrime, setShowCrime] = useState(true);
   const [show311, setShow311] = useState(true);
@@ -89,11 +92,10 @@ export function UnifiedMap() {
             <div className="flex gap-2 border-t border-slate-700 pt-2">
               <button
                 onClick={() => setShowCrime(!showCrime)}
-                className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
-                  showCrime
+                className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${showCrime
                     ? "bg-red-500/20 text-red-400 border border-red-500/30"
                     : "bg-slate-700 text-slate-400 border border-slate-600"
-                }`}
+                  }`}
                 title={showCrime ? "Hide Crime Layer" : "Show Crime Layer"}
               >
                 {showCrime ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
@@ -101,11 +103,10 @@ export function UnifiedMap() {
               </button>
               <button
                 onClick={() => setShow311(!show311)}
-                className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${
-                  show311
+                className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${show311
                     ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
                     : "bg-slate-700 text-slate-400 border border-slate-600"
-                }`}
+                  }`}
                 title={show311 ? "Hide 311 Layer" : "Show 311 Layer"}
               >
                 {show311 ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}
@@ -116,52 +117,48 @@ export function UnifiedMap() {
         </div>
       </div>
 
-      {/* Map Layers */}
+      {/* Map Content */}
       <div className="w-full h-full">
-        {/* Crime Layer */}
-        {(activeView === "crime" || (activeView === "unified" && showCrime)) && (
-          <div className="absolute inset-0">
-            <CrimeHeatmap className="w-full h-full" />
-          </div>
-        )}
+        <MapboxMap
+          crimeData={crimeData}
+          requests311={requests311}
+          showHeatmap={activeView === "crime" || (activeView === "unified" && showCrime)}
+          show311Points={activeView === "311" || (activeView === "unified" && show311)}
+          className="w-full h-full"
+        />
+      </div>
 
-        {/* 311 Layer */}
-        {(activeView === "311" || (activeView === "unified" && show311)) && (
-          <div className="absolute inset-0">
-            <Map311Overlay 
-              className="w-full h-full" 
-              showLayer={true}
-            />
-          </div>
-        )}
-
-        {/* Empty State */}
-        {activeView === "unified" && !showCrime && !show311 && (
-          <div className="absolute inset-0 flex items-center justify-center bg-slate-900/80">
-            <div className="text-center">
-              <Layers className="w-12 h-12 text-slate-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-slate-100 mb-2">No Layers Visible</h3>
-              <p className="text-sm text-slate-400 mb-4">
-                Select at least one layer to display
-              </p>
-              <div className="flex gap-2 justify-center">
-                <button
-                  onClick={() => setShowCrime(true)}
-                  className="px-3 py-2 bg-red-500 text-white rounded text-sm font-medium hover:bg-red-600 transition-colors"
-                >
-                  Show Crime
-                </button>
-                <button
-                  onClick={() => setShow311(true)}
-                  className="px-3 py-2 bg-blue-500 text-white rounded text-sm font-medium hover:bg-blue-600 transition-colors"
-                >
-                  Show 311
-                </button>
-              </div>
+      {/* Crime Statistics Overlay (Conditional) */}
+      {(activeView === "crime" || (activeView === "unified" && showCrime)) && crimeData.length > 0 && (
+        <div className="absolute top-20 left-4 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-3 max-w-[180px] z-10 hidden md:block">
+          <h3 className="text-[10px] font-semibold text-slate-100 mb-2 flex items-center gap-1">
+            <AlertTriangle className="w-3 h-3 text-red-400" />
+            Crime Stats
+          </h3>
+          <div className="space-y-1">
+            <div className="flex justify-between text-[10px]">
+              <span className="text-slate-400">Total</span>
+              <span className="text-slate-100">{crimeData.length}</span>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* 311 Statistics Overlay (Conditional) */}
+      {(activeView === "311" || (activeView === "unified" && show311)) && requests311.length > 0 && (
+        <div className="absolute top-20 right-4 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-3 max-w-[180px] z-10 hidden md:block">
+          <h3 className="text-[10px] font-semibold text-slate-100 mb-2 flex items-center gap-1">
+            <Wrench className="w-3 h-3 text-blue-400" />
+            311 Requests
+          </h3>
+          <div className="space-y-1">
+            <div className="flex justify-between text-[10px]">
+              <span className="text-slate-400">Active</span>
+              <span className="text-slate-100">{requests311.length}</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Map Legend */}
       <div className="absolute bottom-4 left-4 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-3">
@@ -169,7 +166,7 @@ export function UnifiedMap() {
           <Map className="w-3 h-3" />
           Map Legend
         </h4>
-        
+
         {activeView === "crime" && (
           <div className="space-y-1">
             <div className="flex items-center gap-2">

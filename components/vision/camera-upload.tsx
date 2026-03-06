@@ -186,6 +186,8 @@ export function CameraUpload({ onImageCapture, isProcessing = false }: CameraUpl
                 onClick={stopCamera}
                 disabled={isProcessing}
                 className="px-4 py-3 bg-red-500 text-white rounded-full font-medium hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                aria-label="Stop camera"
+                title="Stop camera"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -233,6 +235,8 @@ export function CameraUpload({ onImageCapture, isProcessing = false }: CameraUpl
             accept="image/*"
             onChange={handleFileUpload}
             className="hidden"
+            aria-label="Upload image file"
+            placeholder="Upload image"
           />
         </div>
       )}

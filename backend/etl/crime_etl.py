@@ -126,10 +126,49 @@ class CrimeETL:
         return df
 
     async def load_crime_data(self, df: pd.DataFrame):
-        """Load transformed data to cache/database"""
-        print("💾 Loading crime data to cache...")
+        """Load transformed data to cache and database"""
+        print("💾 Loading crime data to database and cache...")
         
         try:
+            # 1. Store in Database
+            db = SessionLocal()
+            try:
+                from api.models.crime import CrimeIncident
+                
+                records_added = 0
+                records_updated = 0
+                
+                for _, row in df.iterrows():
+                    existing = db.query(CrimeIncident).filter(CrimeIncident.objectid == int(row['id'])).first()
+                    
+                    if existing:
+                        existing.status = row['status']
+                        existing.description = str(row['description']) if pd.notna(row['description']) else None
+                        records_updated += 1
+                    else:
+                        incident = CrimeIncident(
+                            objectid=int(row['id']),
+                            crimetype=row['type'],
+                            latitude=float(row['latitude']),
+                            longitude=float(row['longitude']),
+                            neighborhood=str(row['neighborhood']) if pd.notna(row['neighborhood']) else None,
+                            incidentdate=row['timestamp'],
+                            status=row['status'],
+                            description=str(row['description']) if pd.notna(row['description']) else None,
+                            geom=f"SRID=4326;POINT({row['longitude']} {row['latitude']})"
+                        )
+                        db.add(incident)
+                        records_added += 1
+                
+                db.commit()
+                print(f"💾 DB: Added {records_added}, Updated {records_updated} crime records")
+            except Exception as db_e:
+                print(f"❌ DB Error: {db_e}")
+                db.rollback()
+            finally:
+                db.close()
+
+            # 2. Redis logic below
             # Convert to JSON for Redis storage
             data_json = df.to_json(orient='records', date_format='iso')
             
@@ -155,7 +194,7 @@ class CrimeETL:
             print(f"💾 Cached {len(df)} crime records")
             
         except Exception as e:
-            print(f"❌ Failed to cache crime data: {e}")
+            print(f"❌ Failed to cache/save crime data: {e}")
             raise
 
     async def get_cached_crime_data(self) -> pd.DataFrame:

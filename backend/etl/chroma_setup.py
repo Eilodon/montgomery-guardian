@@ -170,10 +170,12 @@ def setup_chroma():
     chroma = ChromaSetup()
     
     # Test connection
-    if chroma.test_chroma_connection():
-        print("ChromaDB already initialized")
+    collections = chroma.client.list_collections()
+    if len(collections) > 0:
+        print(f"ChromaDB already initialized with {len(collections)} collections")
     else:
         # Populate with data
+        print("Populating ChromaDB...")
         chroma.populate_with_fallback_data()
         chroma.test_chroma_connection()
 

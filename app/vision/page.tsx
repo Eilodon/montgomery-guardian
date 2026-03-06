@@ -1,10 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { CameraUpload } from "@/components/vision/camera-upload";
-import { ImagePreview } from "@/components/vision/image-preview";
-import { AnalysisResult } from "@/components/vision/analysis-result";
+import dynamic from "next/dynamic";
 import { VisionAnalysisResult, ServiceRequest311 } from "@/shared/types";
+
+const CameraUpload = dynamic(
+  () => import("@/components/vision/camera-upload").then((mod) => mod.CameraUpload),
+  { ssr: false }
+);
+const ImagePreview = dynamic(
+  () => import("@/components/vision/image-preview").then((mod) => mod.ImagePreview),
+  { ssr: false }
+);
+const AnalysisResult = dynamic(
+  () => import("@/components/vision/analysis-result").then((mod) => mod.AnalysisResult),
+  { ssr: false }
+);
 
 interface ImageMetadata {
   timestamp: string;
@@ -99,10 +110,10 @@ export default function VisionPage() {
       }
 
       const result = await response.json();
-      
+
       // Show success message and redirect to tracking
       alert(`311 request submitted successfully! Tracking ID: ${result.requestId}`);
-      
+
       // Reset to start
       setStep("upload");
       setImageData("");
@@ -139,33 +150,29 @@ export default function VisionPage() {
               <span className="text-sm text-slate-500">|</span>
               <span className="text-sm text-slate-600">Vision AI Report</span>
             </div>
-            
+
             {/* Progress Steps */}
             <div className="hidden md:flex items-center gap-2">
-              <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-                step === "upload" ? "bg-blue-500 text-white" : 
-                ["preview", "analysis", "result"].includes(step) ? "bg-green-500 text-white" : 
-                "bg-slate-200 text-slate-600"
-              }`}>
+              <div className={`px-3 py-1 rounded-full text-xs font-medium ${step === "upload" ? "bg-blue-500 text-white" :
+                  ["preview", "analysis", "result"].includes(step) ? "bg-green-500 text-white" :
+                    "bg-slate-200 text-slate-600"
+                }`}>
                 1. Upload
               </div>
-              <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-                step === "preview" ? "bg-blue-500 text-white" : 
-                ["analysis", "result"].includes(step) ? "bg-green-500 text-white" : 
-                "bg-slate-200 text-slate-600"
-              }`}>
+              <div className={`px-3 py-1 rounded-full text-xs font-medium ${step === "preview" ? "bg-blue-500 text-white" :
+                  ["analysis", "result"].includes(step) ? "bg-green-500 text-white" :
+                    "bg-slate-200 text-slate-600"
+                }`}>
                 2. Review
               </div>
-              <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-                step === "analysis" ? "bg-blue-500 text-white" : 
-                step === "result" ? "bg-green-500 text-white" : 
-                "bg-slate-200 text-slate-600"
-              }`}>
+              <div className={`px-3 py-1 rounded-full text-xs font-medium ${step === "analysis" ? "bg-blue-500 text-white" :
+                  step === "result" ? "bg-green-500 text-white" :
+                    "bg-slate-200 text-slate-600"
+                }`}>
                 3. Analyze
               </div>
-              <div className={`px-3 py-1 rounded-full text-xs font-medium ${
-                step === "result" ? "bg-blue-500 text-white" : "bg-slate-200 text-slate-600"
-              }`}>
+              <div className={`px-3 py-1 rounded-full text-xs font-medium ${step === "result" ? "bg-blue-500 text-white" : "bg-slate-200 text-slate-600"
+                }`}>
                 4. Submit
               </div>
             </div>
@@ -181,7 +188,7 @@ export default function VisionPage() {
             📸 AI-Powered City Issue Reporting
           </h2>
           <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-            Take a photo of any city issue (potholes, graffiti, flooding, etc.) and our AI will 
+            Take a photo of any city issue (potholes, graffiti, flooding, etc.) and our AI will
             automatically identify the problem and fill out the 311 report for you.
           </p>
         </div>

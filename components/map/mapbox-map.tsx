@@ -14,6 +14,10 @@ interface MapboxMapProps {
   };
   onMapLoad?: (map: mapboxgl.Map) => void;
   onMapClick?: (event: mapboxgl.MapMouseEvent) => void;
+  crimeData?: any[];
+  requests311?: any[];
+  showHeatmap?: boolean;
+  show311Points?: boolean;
 }
 
 // Montgomery, Alabama coordinates
@@ -29,6 +33,10 @@ export function MapboxMap({
   },
   onMapLoad,
   onMapClick,
+  crimeData,
+  requests311,
+  showHeatmap = false,
+  show311Points = false,
 }: MapboxMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -156,8 +164,13 @@ export function MapboxMap({
       });
 
       mapInstance.on("mouseenter", "downtown-marker", (e) => {
-        const coordinates = e.features?.[0]?.geometry?.coordinates as [number, number];
-        const description = e.features?.[0]?.properties?.description;
+        const feature = e.features?.[0];
+        if (!feature || !feature.geometry) return;
+
+        // Use type assertion to bypass lint error
+        const geometry = feature.geometry as any;
+        const coordinates = geometry.coordinates as [number, number];
+        const description = feature.properties?.description;
 
         if (coordinates && description) {
           popup.setLngLat(coordinates).setHTML(`<strong>Downtown Montgomery</strong><br>${description}`).addTo(mapInstance);
@@ -200,10 +213,29 @@ export function MapboxMap({
     }
   }, [initialViewState, mapLoaded]);
 
+  // Handle layers
+  useEffect(() => {
+    if (map.current && mapLoaded) {
+      if (showHeatmap && crimeData) {
+        addCrimeHeatmapLayer(map.current, crimeData);
+      } else if (!showHeatmap && map.current.getLayer("crime-heatmap-circles")) {
+        map.current.removeLayer("crime-heatmap-circles");
+        map.current.removeSource("crime-heatmap");
+      }
+
+      if (show311Points && requests311) {
+        add311MarkersLayer(map.current, requests311);
+      } else if (!show311Points && map.current.getLayer("311-markers-symbols")) {
+        map.current.removeLayer("311-markers-symbols");
+        map.current.removeSource("311-markers");
+      }
+    }
+  }, [mapLoaded, crimeData, requests311, showHeatmap, show311Points]);
+
   return (
     <div className={`relative w-full h-full ${className}`}>
       <div ref={mapContainer} className="w-full h-full" />
-      
+
       {/* Loading indicator */}
       {!mapLoaded && (
         <div className="absolute inset-0 flex items-center justify-center bg-slate-900">

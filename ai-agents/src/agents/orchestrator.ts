@@ -1,6 +1,6 @@
 // ai-agents/src/agents/orchestrator.ts
 import { genkit, z } from 'genkit';
-import { googleAI } from '@genkit-ai/google-ai';
+import { googleAI } from '@genkit-ai/googleai';
 import { safetyAgent } from './safety_agent';
 import { agent311 } from './agent_311';
 import { webAgent } from './web_agent';
@@ -8,7 +8,7 @@ import { webAgent } from './web_agent';
 // Initialize Genkit with Google AI plugin
 const ai = genkit({
   plugins: [googleAI({ apiKey: process.env.GEMINI_API_KEY })],
-  model: 'googleai/gemini-1.5-flash', // Flash = fastest, cheapest
+  model: 'googleai/gemini-flash-latest',
 });
 
 // Intent classifier - routes to correct agent
@@ -35,15 +35,15 @@ Message: "${message}"
 Respond with JSON only: { "agentType": "...", "confidence": 0.0-1.0 }`,
         output: { format: 'json' },
       });
-      
+
       const result = output as any;
-      
+
       // Validate the response
       if (!result.agentType || !result.confidence) {
         console.warn('Invalid intent classification response:', result);
         return { agentType: 'general', confidence: 0.5 };
       }
-      
+
       return result;
     } catch (error) {
       console.error('Intent classification failed:', error);
@@ -63,9 +63,9 @@ export const orchestratorFlow = ai.defineFlow(
         content: z.string(),
       })).optional().default([]),
       language: z.enum(['en', 'es', 'vi']).default('en'),
-      userLocation: z.object({ 
-        lat: z.number(), 
-        lng: z.number() 
+      userLocation: z.object({
+        lat: z.number(),
+        lng: z.number()
       }).optional(),
       context: z.record(z.any()).optional().default({}),
     }),
@@ -78,14 +78,14 @@ export const orchestratorFlow = ai.defineFlow(
   },
   async (input) => {
     try {
-      console.log('Orchestrator processing message:', { 
-        message: input.message, 
-        language: input.language 
+      console.log('Orchestrator processing message:', {
+        message: input.message,
+        language: input.language
       });
 
       // 1. Classify intent
       const { agentType, confidence } = await classifyIntent(input.message);
-      
+
       console.log('Intent classified:', { agentType, confidence });
 
       // 2. Route to correct agent
@@ -122,15 +122,15 @@ export const orchestratorFlow = ai.defineFlow(
         }
       };
 
-      console.log('Orchestrator response generated:', { 
+      console.log('Orchestrator response generated:', {
         agentType: result.agentType,
-        contentLength: result.content?.length || 0 
+        contentLength: result.content?.length || 0
       });
 
       return result;
     } catch (error) {
       console.error('Orchestrator flow error:', error);
-      
+
       // Fallback response
       return {
         content: 'I apologize, but I\'m experiencing technical difficulties. Please try again later.',
@@ -156,14 +156,19 @@ Guidelines:
 - If you don't know something, say so honestly
 - Focus on Montgomery, Alabama when possible`,
     });
-    
-    return { 
-      content: text, 
+
+    return {
+      content: text,
       agentType: 'general',
       metadata: { source: 'general_llm' }
     };
-  } catch (error) {
-    console.error('General response failed:', error);
+  } catch (error: any) {
+    console.error('General response failed:', {
+      message: error.message,
+      status: error.status,
+      details: error.details,
+      stack: error.stack
+    });
     return {
       content: 'I\'m here to help with questions about Montgomery, Alabama. Could you please rephrase your question?',
       agentType: 'general',
@@ -175,15 +180,15 @@ Guidelines:
 // Translation function
 async function translateResponse(ai: any, content: string, language: string): Promise<string> {
   try {
-    const langNames = { 
-      es: 'Spanish', 
-      vi: 'Vietnamese' 
+    const langNames = {
+      es: 'Spanish',
+      vi: 'Vietnamese'
     };
-    
+
     const { text } = await ai.generate({
       prompt: `Translate this to ${langNames[language as keyof typeof langNames]} exactly, preserving meaning and tone: "${content}"`,
     });
-    
+
     return text || content; // Fallback to original if translation fails
   } catch (error) {
     console.error('Translation failed:', error);

@@ -4,6 +4,32 @@ from pydantic import BaseModel
 from typing import Optional, Literal, Dict, Any
 from datetime import datetime
 
+class Trend(BaseModel):
+    direction: Literal['up', 'down']
+    percentage: float
+
+class IncidentsToday(BaseModel):
+    count: int
+    trend: Trend
+
+class Calls911(BaseModel):
+    count: int
+    sparklineData: list[int]
+
+class Open311Requests(BaseModel):
+    count: int
+    topCategory: str
+
+class AvgResponseTime(BaseModel):
+    minutes: float
+    trend: Trend
+
+class KPIData(BaseModel):
+    incidentsToday: IncidentsToday
+    calls911: Calls911
+    open311Requests: Open311Requests
+    avgResponseTime: AvgResponseTime
+
 class CrimeIncident(BaseModel):
     id: str
     type: Literal['violent', 'property', 'drug', 'other']
@@ -84,3 +110,20 @@ class ChatResponse(BaseModel):
 
 class VisionResponse(BaseModel):
     result: VisionAnalysisResult
+
+class IncidentBreakdown(BaseModel):
+    type: str
+    count: int
+    color: str
+
+class DistrictData(BaseModel):
+    id: str
+    name: str
+    score: float
+    crimes: int
+    trend: Literal['up', 'down', 'stable']
+    incidents: list[IncidentBreakdown]
+
+class DistrictsResponse(BaseModel):
+    total: int
+    data: list[DistrictData]

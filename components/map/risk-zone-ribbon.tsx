@@ -104,6 +104,7 @@ export function RiskZoneRibbon({ zones }: RiskZoneRibbonProps) {
                   className={`h-2 rounded-full transition-all duration-500 ${config.bgColor}`}
                   style={{ width }}
                   title={`${config.label}: ${zone.count} zones`}
+                  aria-hidden="true"
                 />
               );
             })}
