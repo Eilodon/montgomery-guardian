@@ -6,6 +6,51 @@ import {
   type KPIDashboardData,
 } from "@/components/dashboard";
 import { MapContainer } from "@/components/map";
+import { AlertFeed, type AlertItem } from "@/components/alerts";
+
+// Sample alerts data for demonstration
+const sampleAlerts: AlertItem[] = [
+  {
+    id: "1",
+    title: "Structure Fire Reported",
+    summary: "Active fire reported at 425 Main Street. Fire department dispatched. Nearby residents advised to avoid the area.",
+    severity: "critical",
+    source: "Fire Department",
+    timestamp: new Date(Date.now() - 2 * 60 * 1000), // 2 min ago
+  },
+  {
+    id: "2",
+    title: "Traffic Collision - Multiple Vehicles",
+    summary: "Multi-vehicle accident on Highway 270 near Exit 15. Emergency services on scene. Expect delays.",
+    severity: "high",
+    source: "Traffic Control",
+    timestamp: new Date(Date.now() - 8 * 60 * 1000), // 8 min ago
+  },
+  {
+    id: "3",
+    title: "Water Main Break",
+    summary: "Water main break reported on Oak Avenue. Crews dispatched for repair. Low water pressure expected in the area.",
+    severity: "medium",
+    source: "Public Works",
+    timestamp: new Date(Date.now() - 25 * 60 * 1000), // 25 min ago
+  },
+  {
+    id: "4",
+    title: "Park Closure Notice",
+    summary: "Montgomery Park closed for scheduled maintenance. Expected to reopen tomorrow at 8 AM.",
+    severity: "low",
+    source: "Parks & Recreation",
+    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
+  },
+  {
+    id: "5",
+    title: "Power Outage - Downtown District",
+    summary: "Approximately 500 customers affected by power outage in downtown area. Crews investigating cause.",
+    severity: "high",
+    source: "Power Company",
+    timestamp: new Date(Date.now() - 3 * 60 * 1000), // 3 min ago
+  },
+];
 
 // Sample KPI data for demonstration
 const sampleData: KPIDashboardData = {
@@ -139,6 +184,43 @@ export default function DemoPage() {
               KPI Overview
             </h2>
             <KPIDashboardGrid data={sampleData} isLoading={isLoading} />
+          </section>
+
+          {/* Alert Feed Section */}
+          <section className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-slate-100">
+                  Live Alerts
+                </h2>
+                <span className="text-sm text-slate-400">
+                  {sampleAlerts.length} active
+                </span>
+              </div>
+              <AlertFeed alerts={sampleAlerts} isLoading={isLoading} />
+            </div>
+
+            <div className="bg-slate-900 border border-slate-700 rounded-xl p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-slate-100">
+                  Alert States Demo
+                </h2>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-sm font-medium text-slate-300 mb-2">Loading State:</h3>
+                  <div className="border border-slate-700 rounded-lg p-3">
+                    <AlertFeed alerts={[]} isLoading={true} />
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-slate-300 mb-2">Empty State:</h3>
+                  <div className="border border-slate-700 rounded-lg p-3">
+                    <AlertFeed alerts={[]} isLoading={false} />
+                  </div>
+                </div>
+              </div>
+            </div>
           </section>
         </main>
       )}

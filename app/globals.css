@@ -21,3 +21,19 @@ body {
   color: var(--color-foreground);
   font-family: var(--font-sans);
 }
+
+/* Slide-in from top animation for alerts */
+@keyframes slide-in-top {
+  0% {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-in-top {
+  animation: slide-in-top 300ms ease-out forwards;
+}
