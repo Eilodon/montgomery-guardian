@@ -56,22 +56,23 @@ Return JSON only (no markdown, no explanation):
   }
 }`;
 
-    // Generate content
-    const result = await visionModel.generateContent([prompt, ...imageParts]);
+    // Generate content with JSON Response Mode
+    const result = await visionModel.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }, ...imageParts] }],
+      generationConfig: {
+        responseMimeType: "application/json",
+      }
+    });
+
     const response = result.response;
     const text = response.text();
 
-    // Parse JSON response
+    // Parse JSON response - Now guaranteed to be valid JSON by the API
     let parsedResult;
     try {
-      // Clean the response to ensure it's valid JSON
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON found in response');
-      }
-      parsedResult = JSON.parse(jsonMatch[0]);
+      parsedResult = JSON.parse(text);
     } catch (parseError) {
-      console.error('Failed to parse vision response:', parseError);
+      console.error('Failed to parse vision response:', parseError, 'Raw text:', text);
       throw new Error('Invalid vision analysis response format');
     }
 

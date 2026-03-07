@@ -133,35 +133,39 @@ class CrimeETL:
             # 1. Store in Database
             db = SessionLocal()
             try:
+                from sqlalchemy.dialects.postgresql import insert
                 from api.models.crime import CrimeIncident
                 
-                records_added = 0
-                records_updated = 0
-                
+                # Prepare records for bulk insert
+                records = []
                 for _, row in df.iterrows():
-                    existing = db.query(CrimeIncident).filter(CrimeIncident.objectid == int(row['id'])).first()
-                    
-                    if existing:
-                        existing.status = row['status']
-                        existing.description = str(row['description']) if pd.notna(row['description']) else None
-                        records_updated += 1
-                    else:
-                        incident = CrimeIncident(
-                            objectid=int(row['id']),
-                            crimetype=row['type'],
-                            latitude=float(row['latitude']),
-                            longitude=float(row['longitude']),
-                            neighborhood=str(row['neighborhood']) if pd.notna(row['neighborhood']) else None,
-                            incidentdate=row['timestamp'],
-                            status=row['status'],
-                            description=str(row['description']) if pd.notna(row['description']) else None,
-                            geom=f"SRID=4326;POINT({row['longitude']} {row['latitude']})"
-                        )
-                        db.add(incident)
-                        records_added += 1
+                    record = {
+                        "objectid": int(row['id']),
+                        "crimetype": row['type'],
+                        "latitude": float(row['latitude']),
+                        "longitude": float(row['longitude']),
+                        "neighborhood": str(row['neighborhood']) if pd.notna(row['neighborhood']) else None,
+                        "incidentdate": row['timestamp'],
+                        "status": row['status'],
+                        "description": str(row['description']) if pd.notna(row['description']) else None,
+                        "geom": f"SRID=4326;POINT({row['longitude']} {row['latitude']})"
+                    }
+                    records.append(record)
                 
-                db.commit()
-                print(f"💾 DB: Added {records_added}, Updated {records_updated} crime records")
+                if records:
+                    # High-performance PostgreSQL Bulk Upsert (ON CONFLICT DO UPDATE)
+                    stmt = insert(CrimeIncident).values(records)
+                    update_stmt = stmt.on_conflict_do_update(
+                        index_elements=['objectid'],
+                        set_={
+                            "status": stmt.excluded.status,
+                            "description": stmt.excluded.description,
+                        }
+                    )
+                    db.execute(update_stmt)
+                    db.commit()
+                    print(f"💾 DB: Bulk UPSERT executed for {len(records)} crime records")
+                
             except Exception as db_e:
                 print(f"❌ DB Error: {db_e}")
                 db.rollback()

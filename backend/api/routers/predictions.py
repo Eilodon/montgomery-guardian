@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
-from ..models.schemas import PredictionsResponse, RiskPrediction
+from ..models.schemas import PredictionsResponse, RiskPrediction, SimulationRequest, SimulationResponse
 from ..core.database import get_db
 from datetime import datetime, timedelta
 import random
@@ -98,6 +98,56 @@ async def get_heatmap_data(
     Get all risk predictions for heatmap visualization.
     """
     return await get_risk_predictions(limit=500, forecast_hours=forecast_hours, db=db)
+
+@router.post("/simulate", response_model=SimulationResponse)
+async def simulate_risk_impact(request: SimulationRequest):
+    """
+    Simulate the impact of patrol coverage and 311 backlog on crime risk.
+    Uses ensemble ML model and feature perturbation analysis.
+    """
+    try:
+        ensemble_model = get_ensemble_model()
+        
+        # Base features for a representative central area
+        base_features = {
+            'hour': 12,
+            'day_of_week': 3,
+            'month': datetime.now().month,
+            'distance_to_downtown': 1.5,
+            'crime_count_7d': 10,
+            'crime_count_30d': 40,
+            'open_311_count': 5,
+            'total_311_count_30d': 20
+        }
+        
+        # Perturb features based on simulation parameters
+        # High patrol coverage reduces perceived crime density in the model
+        sim_features = base_features.copy()
+        sim_features['crime_count_7d'] = max(1, base_features['crime_count_7d'] * (1 - request.patrolCoverage / 100))
+        # High backlog level increases open 311 count feature
+        sim_features['open_311_count'] = base_features['open_311_count'] * (request.backlogLevel / 50)
+        
+        if ensemble_model:
+            result = ensemble_model.ensemble_predict(sim_features)
+            # Normalize ensemble score (1-4) to percentage impact (0-100)
+            # Higher score = higher risk = lower impact (positive) score
+            projected_impact = max(0, min(100, (4 - result['ensembleScore']) / 3 * 100))
+        else:
+            # Fallback to a more sophisticated (but still formulaic) mock if model fails
+            projected_impact = (request.patrolCoverage * 0.7) - (request.backlogLevel * 0.3) + 30
+            projected_impact = max(0, min(100, projected_impact))
+            
+        return SimulationResponse(
+            projectedImpact=round(projected_impact),
+            confidenceScore=0.85 if ensemble_model else 0.5,
+            factors={
+                "patrol_effect": request.patrolCoverage * 0.6,
+                "backlog_penalty": -request.backlogLevel * 0.4
+            }
+        )
+    except Exception as e:
+        print(f"❌ Simulation error: {e}")
+        return SimulationResponse(projectedImpact=50, confidenceScore=0.1)
 
 def _generate_ensemble_predictions(
     ensemble_model,

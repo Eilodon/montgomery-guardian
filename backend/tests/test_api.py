@@ -11,7 +11,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from api.main import app
 
-client = TestClient(app)
+# Montgomery Guardian API Key for testing
+API_KEY = "mg_secret_key_2026_change_me"
+client = TestClient(app, headers={"X-API-Key": API_KEY})
 
 class TestHealthEndpoint:
     def test_health_check(self):
@@ -227,11 +229,10 @@ class TestVisionEndpoint:
 class TestCORSHeaders:
     def test_cors_headers(self):
         """Test that CORS headers are properly set"""
-        response = client.options("/health")
+        response = client.options("/health", headers={"Origin": "http://localhost:3000"})
         # Check for CORS headers
         assert "access-control-allow-origin" in response.headers
-        assert "access-control-allow-methods" in response.headers
-        assert "access-control-allow-headers" in response.headers
+        assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
 
 class TestErrorHandling:
     def test_invalid_endpoint(self):

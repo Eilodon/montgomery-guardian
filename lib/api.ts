@@ -1,9 +1,8 @@
 // lib/api.ts
 import useSWR from 'swr';
 
-// API base URL and Key
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'mg_secret_key_2026_change_me';
+// API base URL - Now routing through local secure proxy to hide credentials
+const API_BASE = '/api/proxy';
 
 // Types for API responses
 export interface KPIData {
@@ -80,7 +79,7 @@ export interface VisionAnalysisResult {
 const fetcher = async (url: string) => {
   const response = await fetch(`${API_BASE}${url}`, {
     headers: {
-      'X-API-Key': API_KEY
+      'Content-Type': 'application/json'
     }
   });
 
@@ -93,42 +92,42 @@ const fetcher = async (url: string) => {
 };
 
 // SWR hooks for real API data
-export function useKPIData() {
-  const { data, error, isLoading, mutate } = useSWR<KPIData>('/kpis', fetcher);
+export function useKPIData(enabled: boolean = true) {
+  const { data, error, isLoading, mutate } = useSWR<KPIData>(enabled ? '/kpis' : null, fetcher);
 
   return {
     kpiData: data,
-    isLoading,
+    isLoading: enabled ? isLoading : false,
     isError: !!error,
     mutate
   };
 }
 
-export function useLiveAlerts() {
-  const { data, error, isLoading, mutate } = useSWR<AlertItem[]>('/alerts/live', fetcher, {
+export function useLiveAlerts(enabled: boolean = true) {
+  const { data, error, isLoading, mutate } = useSWR<AlertItem[]>(enabled ? '/alerts/live' : null, fetcher, {
     refreshInterval: 30000, // Refresh every 30 seconds for live alerts
   });
 
   return {
     alerts: data || [],
-    isLoading,
+    isLoading: enabled ? isLoading : false,
     isError: !!error,
     mutate
   };
 }
 
-export function useDistricts() {
-  const { data, error, isLoading, mutate } = useSWR<DistrictData[]>('/districts', fetcher);
+export function useDistricts(enabled: boolean = true) {
+  const { data, error, isLoading, mutate } = useSWR<DistrictData[]>(enabled ? '/districts' : null, fetcher);
 
   return {
     districts: data || [],
-    isLoading,
+    isLoading: enabled ? isLoading : false,
     isError: !!error,
     mutate
   };
 }
 
-export function usePredictions(options?: {
+export function usePredictions(enabled: boolean = true, options?: {
   riskLevel?: string;
   forecastHours?: number;
   limit?: number;
@@ -142,7 +141,7 @@ export function usePredictions(options?: {
 
   const queryString = params.toString();
   const { data, error, isLoading, mutate } = useSWR<PredictionData[]>(
-    `/predictions?${queryString}`,
+    enabled ? `/predictions?${queryString}` : null,
     fetcher,
     {
       refreshInterval: 60000 // Refresh every minute for predictions
@@ -151,33 +150,33 @@ export function usePredictions(options?: {
 
   return {
     predictions: data || [],
-    isLoading,
+    isLoading: enabled ? isLoading : false,
     isError: !!error,
     mutate
   };
 }
 
-export function useHeatmapData() {
-  const { data, error, isLoading, mutate } = useSWR('/predictions/heatmap', fetcher, {
+export function useHeatmapData(enabled: boolean = true) {
+  const { data, error, isLoading, mutate } = useSWR(enabled ? '/predictions/heatmap' : null, fetcher, {
     refreshInterval: 120000 // Refresh every 2 minutes for heatmap
   });
 
   return {
     heatmapData: data,
-    isLoading,
+    isLoading: enabled ? isLoading : false,
     isError: !!error,
     mutate
   };
 }
 
-export function useActive311Requests() {
-  const { data, error, isLoading, mutate } = useSWR('/requests/active', fetcher, {
+export function useActive311Requests(enabled: boolean = true) {
+  const { data, error, isLoading, mutate } = useSWR(enabled ? '/requests/active' : null, fetcher, {
     refreshInterval: 45000 // Refresh every 45 seconds for 311 requests
   });
 
   return {
     requests: data || [],
-    isLoading,
+    isLoading: enabled ? isLoading : false,
     isError: !!error,
     mutate
   };
@@ -189,7 +188,6 @@ export async function sendChatMessage(message: string, userLocation?: { lat: num
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-API-Key': API_KEY,
     },
     body: JSON.stringify({
       message,
@@ -219,9 +217,6 @@ export async function analyzeImage(imageFile: File, location?: { lat: number; ln
 
   const response = await fetch(`${API_BASE}/vision/analyze`, {
     method: 'POST',
-    headers: {
-      'X-API-Key': API_KEY,
-    },
     body: formData
   });
 
@@ -233,12 +228,12 @@ export async function analyzeImage(imageFile: File, location?: { lat: number; ln
 }
 
 // SHAP explanation data
-export function useSHAPExplainability() {
-  const { data, error, isLoading, mutate } = useSWR('/predictions/explain', fetcher);
+export function useSHAPExplainability(enabled: boolean = true) {
+  const { data, error, isLoading, mutate } = useSWR(enabled ? '/predictions/explain' : null, fetcher);
 
   return {
     shapData: data,
-    isLoading,
+    isLoading: enabled ? isLoading : false,
     isError: !!error,
     mutate
   };
@@ -250,7 +245,6 @@ export async function apiCall(endpoint: string, options: RequestInit = {}) {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      'X-API-Key': API_KEY,
       ...options.headers,
     },
   });

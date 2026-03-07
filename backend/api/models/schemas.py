@@ -127,3 +127,12 @@ class DistrictData(BaseModel):
 class DistrictsResponse(BaseModel):
     total: int
     data: list[DistrictData]
+
+class SimulationRequest(BaseModel):
+    patrolCoverage: float
+    backlogLevel: float
+
+class SimulationResponse(BaseModel):
+    projectedImpact: int
+    confidenceScore: float
+    factors: Dict[str, float]

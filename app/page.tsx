@@ -26,14 +26,14 @@ import {
 export default function DemoPage() {
   const [activeView, setActiveView] = useState<"dashboard" | "map" | "analytics" | "scorecard">("map");
 
-  // Use SWR hooks to fetch real data
-  const { kpiData, isLoading: kpiLoading } = useKPIData();
-  const { alerts, isLoading: alertsLoading } = useLiveAlerts();
-  const { districts, isLoading: districtsLoading } = useDistricts();
-  const { predictions, isLoading: predictionsLoading } = usePredictions();
-  const { heatmapData, isLoading: heatmapLoading } = useHeatmapData();
-  const { requests: active311Requests, isLoading: requestsLoading } = useActive311Requests();
-  const { shapData, isLoading: shapLoading } = useSHAPExplainability();
+  // Use SWR hooks to fetch real data only when view is active
+  const { kpiData, isLoading: kpiLoading } = useKPIData(activeView === "dashboard");
+  const { alerts, isLoading: alertsLoading } = useLiveAlerts(activeView === "dashboard");
+  const { districts, isLoading: districtsLoading } = useDistricts(activeView === "scorecard");
+  const { predictions, isLoading: predictionsLoading } = usePredictions(activeView === "map");
+  const { heatmapData, isLoading: heatmapLoading } = useHeatmapData(activeView === "map");
+  const { requests: active311Requests, isLoading: requestsLoading } = useActive311Requests(activeView === "map");
+  const { shapData, isLoading: shapLoading } = useSHAPExplainability(activeView === "analytics");
 
   const isLoading = kpiLoading || alertsLoading || districtsLoading || predictionsLoading || heatmapLoading || requestsLoading || shapLoading;
 
@@ -53,8 +53,8 @@ export default function DemoPage() {
           <button
             onClick={() => setActiveView("map")}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeView === "map"
-                ? "bg-accent text-slate-100"
-                : "text-slate-400 hover:text-slate-100 hover:bg-slate-800"
+              ? "bg-accent text-slate-100"
+              : "text-slate-400 hover:text-slate-100 hover:bg-slate-800"
               }`}
           >
             Map View
@@ -62,8 +62,8 @@ export default function DemoPage() {
           <button
             onClick={() => setActiveView("dashboard")}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeView === "dashboard"
-                ? "bg-accent text-slate-100"
-                : "text-slate-400 hover:text-slate-100 hover:bg-slate-800"
+              ? "bg-accent text-slate-100"
+              : "text-slate-400 hover:text-slate-100 hover:bg-slate-800"
               }`}
           >
             Dashboard
@@ -71,8 +71,8 @@ export default function DemoPage() {
           <button
             onClick={() => setActiveView("analytics")}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeView === "analytics"
-                ? "bg-accent text-slate-100"
-                : "text-slate-400 hover:text-slate-100 hover:bg-slate-800"
+              ? "bg-accent text-slate-100"
+              : "text-slate-400 hover:text-slate-100 hover:bg-slate-800"
               }`}
           >
             Analytics
@@ -80,8 +80,8 @@ export default function DemoPage() {
           <button
             onClick={() => setActiveView("scorecard")}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeView === "scorecard"
-                ? "bg-accent text-slate-100"
-                : "text-slate-400 hover:text-slate-100 hover:bg-slate-800"
+              ? "bg-accent text-slate-100"
+              : "text-slate-400 hover:text-slate-100 hover:bg-slate-800"
               }`}
           >
             Scorecard
