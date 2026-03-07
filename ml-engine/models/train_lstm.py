@@ -319,6 +319,59 @@ def train_lstm_model(sequences: np.ndarray, targets: np.ndarray, scaler: MinMaxS
     
     return model_data
 
+def get_latest_sequences(crime_df: pd.DataFrame, scaler: MinMaxScaler, sequence_length: int = 14) -> np.ndarray:
+    """
+    Get the latest sequences from real data for prediction
+    """
+    logger.info("Preparing latest sequences from real data...")
+    
+    # Aggregate crime counts by date
+    crime_df['incidentdate'] = pd.to_datetime(crime_df['incidentdate'])
+    daily_crime_counts = crime_df.groupby(crime_df['incidentdate'].dt.date).size().reset_index(name='crime_count')
+    daily_crime_counts.columns = ['date', 'crime_count']
+    daily_crime_counts['date'] = pd.to_datetime(daily_crime_counts['date'])
+    
+    # Sort by date
+    daily_crime_counts = daily_crime_counts.sort_values('date')
+    
+    # We need at least sequence_length days
+    if len(daily_crime_counts) < sequence_length:
+        logger.warning(f"Not enough historical data ({len(daily_crime_counts)} days). Using padding.")
+        # Pad with zeros if not enough data
+        # ... logic for padding if needed ...
+    
+    # Add features (same as in prepare_time_series_data)
+    daily_crime_counts['day_of_week'] = daily_crime_counts['date'].dt.dayofweek
+    daily_crime_counts['month'] = daily_crime_counts['date'].dt.month
+    daily_crime_counts['is_weekend'] = (daily_crime_counts['day_of_week'] >= 5).astype(int)
+    
+    for lag in range(1, 8):
+        daily_crime_counts[f'lag_{lag}'] = daily_crime_counts['crime_count'].shift(lag)
+    
+    daily_crime_counts['rolling_mean_7'] = daily_crime_counts['crime_count'].rolling(window=7, min_periods=1).mean()
+    daily_crime_counts['rolling_std_7'] = daily_crime_counts['crime_count'].rolling(window=7, min_periods=1).std().fillna(0)
+    
+    daily_crime_counts = daily_crime_counts.fillna(0)
+    
+    feature_columns = ['crime_count', 'day_of_week', 'month', 'is_weekend'] + \
+                     [f'lag_{lag}' for lag in range(1, 8)] + \
+                     ['rolling_mean_7', 'rolling_std_7']
+    
+    data = daily_crime_counts[feature_columns].values
+    
+    # Scale data
+    scaled_data = scaler.transform(data)
+    
+    # Take the last sequence_length entries
+    if len(scaled_data) >= sequence_length:
+        latest_sequence = scaled_data[-sequence_length:]
+    else:
+        # Pad if still too short
+        pad_size = sequence_length - len(scaled_data)
+        latest_sequence = np.vstack([np.zeros((pad_size, len(feature_columns))), scaled_data])
+    
+    return latest_sequence.reshape(1, sequence_length, -1)
+
 def predict_lstm(model_data: Dict[str, Any], last_sequences: np.ndarray) -> Dict[str, Any]:
     """
     Make prediction using trained LSTM model

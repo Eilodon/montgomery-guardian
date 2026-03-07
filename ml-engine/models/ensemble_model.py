@@ -6,6 +6,11 @@ import pandas as pd
 from typing import Dict, Any, List, Tuple
 import logging
 from sklearn.ensemble import IsolationForest
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from sklearn.preprocessing import StandardScaler
 import pickle
 from pathlib import Path
@@ -34,8 +39,8 @@ class EnsembleModel:
         }
         
         # Risk level mapping
-        self.risk_levels = ['low', 'medium', 'high']
-        self.risk_scores = {'low': 1, 'medium': 2, 'high': 3}
+        self.risk_levels = ['low', 'medium', 'high', 'critical']
+        self.risk_scores = {'low': 1, 'medium': 2, 'high': 3, 'critical': 4}
         
     def load_xgboost_model(self, model_path: str = "ml-engine/models/xgb_model.pkl"):
         """Load XGBoost model"""
@@ -106,14 +111,18 @@ class EnsembleModel:
         # For LSTM, we need recent time series data
         # This is simplified - in practice, you'd need the actual recent sequences
         try:
-            from .train_lstm import predict_lstm
+            from .train_lstm import predict_lstm, get_latest_sequences
+            from data.data_query import get_real_data
             
-            # Create dummy sequences (should be replaced with actual recent data)
+            # Fetch real historical data for time-series sequence
+            crime_df, _ = get_real_data()
+            
+            # Get real sequences using the model's scaler
             sequence_length = self.lstm_model['sequence_length']
-            input_size = self.lstm_model['input_size']
-            dummy_sequences = np.random.randn(1, sequence_length, input_size)
+            scaler = self.lstm_model['scaler']
+            real_sequences = get_latest_sequences(crime_df, scaler, sequence_length)
             
-            lstm_result = predict_lstm(self.lstm_model, dummy_sequences)
+            lstm_result = predict_lstm(self.lstm_model, real_sequences)
             
             # Convert predicted crime count to risk level
             predicted_count = lstm_result['predicted_crime_count']

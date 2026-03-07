@@ -63,7 +63,7 @@ class RiskPrediction(BaseModel):
     generatedAt: datetime
 
 class VisionAnalysisResult(BaseModel):
-    incidentType: ServiceRequest311['serviceType']
+    incidentType: str
     severity: Literal['high', 'medium', 'low']
     confidence: float
     description: str

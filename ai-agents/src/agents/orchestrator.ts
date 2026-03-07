@@ -4,6 +4,7 @@ import { googleAI } from '@genkit-ai/googleai';
 import { safetyAgent } from './safety_agent';
 import { agent311 } from './agent_311';
 import { webAgent } from './web_agent';
+import { scrutinizePrompt, scrutinizeOutput } from './guardian';
 
 // Initialize Genkit with Google AI plugin
 const ai = genkit({
@@ -83,6 +84,17 @@ export const orchestratorFlow = ai.defineFlow(
         language: input.language
       });
 
+      // 0. Safety Scrutiny (Prompt)
+      const safetyCheck = await scrutinizePrompt(ai, input.message);
+      if (!safetyCheck.safe) {
+        return {
+          content: `Safety Alert: ${safetyCheck.reason || 'Your message contains content that violates our safety policies.'}`,
+          agentType: 'guardian',
+          timestamp: new Date().toISOString(),
+          metadata: { safetyViolation: true }
+        };
+      }
+
       // 1. Classify intent
       const { agentType, confidence } = await classifyIntent(input.message);
 
@@ -102,6 +114,12 @@ export const orchestratorFlow = ai.defineFlow(
           break;
         default:
           response = await generalResponse(ai, input);
+      }
+
+      // 2.5 Safety Scrutiny (Output)
+      if (response.content) {
+        const outputCheck = await scrutinizeOutput(ai, response.content, agentType);
+        response.content = outputCheck.content;
       }
 
       // 3. Translate if needed

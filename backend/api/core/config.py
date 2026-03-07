@@ -13,8 +13,9 @@ class Settings(BaseSettings):
     bright_data_api_token: Optional[str] = None
     arcgis_api_timeout: int = 30
     
-    # CORS
-    allowed_origins: list[str] = ["*"]
+    # Security
+    api_key: str = "mg_secret_key_2026_change_me"
+    allowed_origins: list[str] = ["http://localhost:3000", "http://localhost:8000"]
     
     # ETL Settings
     etl_interval_minutes: int = 60

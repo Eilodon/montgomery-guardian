@@ -2,7 +2,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
-from ..models.schemas import CrimeResponse, CrimeIncident
+from ..models.schemas import CrimeResponse, CrimeIncident, DistrictsResponse, DistrictData
 from ..core.database import get_db
 from etl.arcgis_client import fetch_arcgis_dataset
 from datetime import datetime
