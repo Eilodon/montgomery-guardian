@@ -1,11 +1,21 @@
 // ai-agents/src/tools/crime_tool.ts
 import axios from 'axios';
 
+// Thêm Type cho Response để LLM không bị ảo giác
+export interface ToolResponse {
+  success: boolean;
+  data: any[] | null;
+  total: number;
+  source: string;
+  error?: string;
+  message?: string;
+}
+
 export async function queryCrimeTool(params: {
   neighborhood?: string;
   limit?: number;
   userLocation?: { lat: number; lng: number };
-}): Promise<any> {
+}): Promise<ToolResponse> {
   try {
     const backendUrl = process.env.BACKEND_API_URL || 'http://localhost:8000';
     
@@ -21,7 +31,7 @@ export async function queryCrimeTool(params: {
     // Make request to backend API
     const response = await axios.get(`${backendUrl}/api/v1/crime`, {
       params: queryParams,
-      timeout: 10000,
+      timeout: 5000, // THỢ RÈN: Ép timeout ngắn để không treo LLM
       headers: {
         'Content-Type': 'application/json',
       }
@@ -32,60 +42,26 @@ export async function queryCrimeTool(params: {
       total: response.data.total 
     });
     
-    return {
-      success: true,
-      data: response.data.data || [],
-      total: response.data.total || 0,
-      source: 'backend_api'
+    return { 
+      success: true, 
+      data: response.data.data || [], 
+      total: response.data.total || 0, 
+      source: 'backend_api' 
     };
     
   } catch (error) {
-    console.error('Crime tool error:', error);
-    
-    // Return mock data on failure
+    console.error('[CIRCUIT BREAKER] Crime tool failed:', error);
+    // THỢ RÈN: Tuyệt đối không dùng getMockCrimeData(). Báo lỗi thẳng cho LLM.
     return {
       success: false,
-      data: getMockCrimeData(params.neighborhood, params.limit),
-      total: 3,
-      source: 'mock_data',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      data: null, // Bắt buộc null
+      total: 0,
+      source: 'error',
+      error: 'API_UNAVAILABLE',
+      message: 'Hệ thống cơ sở dữ liệu tội phạm hiện không phản hồi. Hãy khuyên người dùng thông cảm và gọi trực tiếp cho cảnh sát.'
     };
   }
 }
 
-function getMockCrimeData(neighborhood?: string, limit: number = 10): any[] {
-  const mockData = [
-    {
-      id: 'mock_crime_1',
-      type: 'property',
-      latitude: 32.3617,
-      longitude: -86.2792,
-      neighborhood: neighborhood || 'Downtown',
-      timestamp: new Date().toISOString(),
-      status: 'open',
-      description: 'Burglary reported on Commerce Street'
-    },
-    {
-      id: 'mock_crime_2',
-      type: 'violent',
-      latitude: 32.3625,
-      longitude: -86.2800,
-      neighborhood: neighborhood || 'Capitol Heights',
-      timestamp: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-      status: 'investigating',
-      description: 'Assault investigation ongoing'
-    },
-    {
-      id: 'mock_crime_3',
-      type: 'drug',
-      latitude: 32.3600,
-      longitude: -86.2785,
-      neighborhood: neighborhood || 'Oak Park',
-      timestamp: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
-      status: 'closed',
-      description: 'Drug possession case resolved'
-    }
-  ];
-  
-  return mockData.slice(0, limit);
-}
+// MOCK DATA ĐÃ BỊ XÓA - KHÔNG DÙNG DATA ẢO KHI BACKEND SẬP
+// THỢ RÈN: Circuit breaker pattern - không có fallback data ảo

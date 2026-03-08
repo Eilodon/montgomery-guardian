@@ -1,9 +1,10 @@
 // ai-agents/src/agents/safety_agent.ts
 import { z } from 'genkit';
-import { queryCrimeTool } from '../tools/crime_tool';
+import { queryCrimeTool, ToolResponse } from '../tools/crime_tool';
 import { ragService } from '../rag';
+import { AgentInput } from '../types/agents';
 
-export async function safetyAgent(ai: any, input: any): Promise<any> {
+export async function safetyAgent(ai: any, input: AgentInput): Promise<any> {
   try {
     console.log('Safety agent processing request:', { message: input.message });
 
@@ -34,13 +35,20 @@ export async function safetyAgent(ai: any, input: any): Promise<any> {
     // Use tools to get relevant crime data
     let crimeData = null;
     try {
-      crimeData = await queryCrimeTool({
+      const toolRes = await queryCrimeTool({
         neighborhood: extractNeighborhood(input.message) || undefined,
         limit: 10,
         userLocation: input.userLocation
       });
+      if (toolRes.success) {
+        crimeData = toolRes.data;
+      } else {
+        // Nhét thông báo lỗi của Tool vào context để LLM biết đường trả lời
+        ragContext += `\nLưu ý hệ thống: ${toolRes.message}`;
+      }
     } catch (toolError) {
       console.warn('Crime tool failed:', toolError);
+      ragContext += '\nLưu ý hệ thống: Không thể truy cập dữ liệu an toàn công cộng hiện tại.';
     }
 
     const { text } = await ai.generate({

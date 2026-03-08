@@ -1,11 +1,22 @@
 // ai-agents/src/tools/scrape_tool.ts
 import axios from 'axios';
 
+// Thêm Type cho Response để LLM không bị ảo giác
+export interface ToolResponse {
+  success: boolean;
+  data: any[] | null;
+  total: number;
+  source: string;
+  query?: string;
+  error?: string;
+  message?: string;
+}
+
 export async function scrapeTool(params: {
   query: string;
   limit?: number;
   userLocation?: { lat: number; lng: number };
-}): Promise<any> {
+}): Promise<ToolResponse> {
   try {
     const backendUrl = process.env.BACKEND_API_URL || 'http://localhost:8000';
     
@@ -29,7 +40,7 @@ export async function scrapeTool(params: {
     // Make request to backend API for alerts
     const response = await axios.get(`${backendUrl}/api/v1/alerts`, {
       params: queryParams,
-      timeout: 10000,
+      timeout: 5000, // THỢ RÈN: Ép timeout ngắn để không treo LLM
       headers: {
         'Content-Type': 'application/json',
       }
@@ -40,79 +51,28 @@ export async function scrapeTool(params: {
       total: response.data.total 
     });
     
-    return {
-      success: true,
-      data: response.data.data || [],
-      total: response.data.total || 0,
+    return { 
+      success: true, 
+      data: response.data.data || [], 
+      total: response.data.total || 0, 
       source: 'backend_api',
-      query: params.query
+      query: params.query 
     };
     
   } catch (error) {
-    console.error('Scrape tool error:', error);
-    
-    // Return mock data on failure
+    console.error('[CIRCUIT BREAKER] Scrape tool failed:', error);
+    // THỢ RÈN: Tuyệt đối không dùng getMockAlertData(). Báo lỗi thẳng cho LLM.
     return {
       success: false,
-      data: getMockAlertData(params.query, params.limit),
-      total: 3,
-      source: 'mock_data',
+      data: null, // Bắt buộc null
+      total: 0,
+      source: 'error',
       query: params.query,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: 'API_UNAVAILABLE',
+      message: 'Hệ thống cảnh báo thời gian thực hiện không phản hồi. Hãy khuyên người dùng kiểm tra các nguồn tin tức chính thức.'
     };
   }
 }
 
-function getMockAlertData(query: string, limit: number = 5): any[] {
-  const mockData = [
-    {
-      id: 'mock_alert_1',
-      title: 'Emergency Road Closure on I-65',
-      summary: 'Multi-vehicle accident causing complete closure of I-65 Northbound near Exit 167.',
-      severity: 'critical',
-      source: 'Montgomery Police Department',
-      sourceUrl: 'https://www.montgomeryal.gov/city-government/departments/police',
-      timestamp: new Date().toISOString(),
-      coordinates: [32.3617, -86.2792],
-      affectedNeighborhood: 'Downtown'
-    },
-    {
-      id: 'mock_alert_2',
-      title: 'Increased Police Patrols in Oak Park',
-      summary: 'Montgomery PD reports increased patrols in Oak Park neighborhood this weekend.',
-      severity: 'medium',
-      source: 'Montgomery City Government',
-      sourceUrl: 'https://www.montgomeryal.gov/news',
-      timestamp: new Date(Date.now() - 21600000).toISOString(), // 6 hours ago
-      coordinates: [32.3500, -86.2900],
-      affectedNeighborhood: 'Oak Park'
-    },
-    {
-      id: 'mock_alert_3',
-      title: 'Traffic Incident on Dexter Avenue',
-      summary: 'Minor traffic incident on Dexter Avenue causing temporary lane closures.',
-      severity: 'high',
-      source: 'WSFA News',
-      sourceUrl: 'https://wsfa.com/crime',
-      timestamp: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
-      coordinates: [32.3625, -86.2800],
-      affectedNeighborhood: 'Downtown'
-    }
-  ];
-  
-  // Filter based on query keywords
-  const queryLower = query.toLowerCase();
-  let filteredData = mockData;
-  
-  if (queryLower.includes('critical') || queryLower.includes('emergency')) {
-    filteredData = mockData.filter(alert => alert.severity === 'critical');
-  } else if (queryLower.includes('high')) {
-    filteredData = mockData.filter(alert => alert.severity === 'high');
-  } else if (queryLower.includes('medium')) {
-    filteredData = mockData.filter(alert => alert.severity === 'medium');
-  } else if (queryLower.includes('low')) {
-    filteredData = mockData.filter(alert => alert.severity === 'low');
-  }
-  
-  return filteredData.slice(0, limit);
-}
+// MOCK DATA ĐÃ BỊ XÓA - KHÔNG DÙNG DATA ẢO KHI BACKEND SẬP
+// THỢ RÈN: Circuit breaker pattern - không có fallback data ảo

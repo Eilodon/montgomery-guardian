@@ -17,8 +17,12 @@ Respond with JSON only: { "safe": boolean, "reason": "reason if unsafe" }`,
 
         return output as any;
     } catch (error) {
-        console.error('Guardian prompt scrutiny failed:', error);
-        return { safe: true }; // Fail open for the classified intent but orchestrator will handle it
+        console.error('[FATAL] Guardian prompt scrutiny API failed:', error);
+        // THỢ RÈN: FAIL-CLOSED. Không thể xác minh = Không an toàn.
+        return { 
+            safe: false, 
+            reason: "Hệ thống an ninh đang gián đoạn. Không thể xác minh mức độ an toàn của yêu cầu." 
+        };
     }
 }
 
@@ -41,7 +45,11 @@ Respond with JSON only: { "safe": boolean, "content": "original or sanitized con
 
         return output as any;
     } catch (error) {
-        console.error('Guardian output scrutiny failed:', error);
-        return { safe: true, content }; // Fallback to original
+        console.error('[FATAL] Guardian output scrutiny API failed:', error);
+        // THỢ RÈN: FAIL-CLOSED. Chặn output rủi ro.
+        return { 
+            safe: false, 
+            content: "Hệ thống đang bảo trì một số giao thức an toàn. Vui lòng liên hệ trực tiếp 311 hoặc 911 nếu đây là trường hợp khẩn cấp." 
+        };
     }
 }

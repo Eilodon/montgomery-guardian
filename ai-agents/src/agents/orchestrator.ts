@@ -84,19 +84,23 @@ export const orchestratorFlow = ai.defineFlow(
         language: input.language
       });
 
-      // 0. Safety Scrutiny (Prompt)
-      const safetyCheck = await scrutinizePrompt(ai, input.message);
+      // THỢ RÈN: Chạy song song kiểm tra an toàn và phân loại ý định (Concurrent execution)
+      const [safetyCheck, intentResult] = await Promise.all([
+        scrutinizePrompt(ai, input.message),
+        classifyIntent(input.message).catch(() => ({ agentType: 'general', confidence: 0 }))
+      ]);
+
+      // Nếu prompt độc hại hoặc Guardian sập, ngắt mạch ngay lập tức
       if (!safetyCheck.safe) {
         return {
-          content: `Safety Alert: ${safetyCheck.reason || 'Your message contains content that violates our safety policies.'}`,
+          content: `Safety Alert: ${safetyCheck.reason || 'Yêu cầu vi phạm giao thức an toàn hoặc hệ thống an ninh đang bảo trì.'}`,
           agentType: 'guardian',
           timestamp: new Date().toISOString(),
           metadata: { safetyViolation: true }
         };
       }
 
-      // 1. Classify intent
-      const { agentType, confidence } = await classifyIntent(input.message);
+      const { agentType, confidence } = intentResult;
 
       console.log('Intent classified:', { agentType, confidence });
 

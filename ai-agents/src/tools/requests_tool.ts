@@ -1,12 +1,22 @@
 // ai-agents/src/tools/requests_tool.ts
 import axios from 'axios';
 
+// Thêm Type cho Response để LLM không bị ảo giác
+export interface ToolResponse {
+  success: boolean;
+  data: any[] | null;
+  total: number;
+  source: string;
+  error?: string;
+  message?: string;
+}
+
 export async function queryRequestsTool(params: {
   service_type?: string;
   status?: string;
   limit?: number;
   userLocation?: { lat: number; lng: number };
-}): Promise<any> {
+}): Promise<ToolResponse> {
   try {
     const backendUrl = process.env.BACKEND_API_URL || 'http://localhost:8000';
     
@@ -26,7 +36,7 @@ export async function queryRequestsTool(params: {
     // Make request to backend API
     const response = await axios.get(`${backendUrl}/api/v1/requests-311`, {
       params: queryParams,
-      timeout: 10000,
+      timeout: 5000, // THỢ RÈN: Ép timeout ngắn để không treo LLM
       headers: {
         'Content-Type': 'application/json',
       }
@@ -37,66 +47,26 @@ export async function queryRequestsTool(params: {
       total: response.data.total 
     });
     
-    return {
-      success: true,
-      data: response.data.data || [],
-      total: response.data.total || 0,
-      source: 'backend_api'
+    return { 
+      success: true, 
+      data: response.data.data || [], 
+      total: response.data.total || 0, 
+      source: 'backend_api' 
     };
     
   } catch (error) {
-    console.error('311 requests tool error:', error);
-    
-    // Return mock data on failure
+    console.error('[CIRCUIT BREAKER] 311 requests tool failed:', error);
+    // THỢ RÈN: Tuyệt đối không dùng getMockRequestsData(). Báo lỗi thẳng cho LLM.
     return {
       success: false,
-      data: getMockRequestsData(params.service_type, params.status, params.limit),
-      total: 3,
-      source: 'mock_data',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      data: null, // Bắt buộc null
+      total: 0,
+      source: 'error',
+      error: 'API_UNAVAILABLE',
+      message: 'Hệ thống yêu cầu 311 hiện không phản hồi. Hãy khuyên người dùng gọi trực tiếp 311.'
     };
   }
 }
 
-function getMockRequestsData(serviceType?: string, status?: string, limit: number = 10): any[] {
-  const mockData = [
-    {
-      requestId: 'mock_311_1',
-      serviceType: serviceType || 'pothole',
-      status: status || 'open',
-      latitude: 32.3617,
-      longitude: -86.2792,
-      address: '123 Commerce St, Montgomery, AL',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      description: 'Large pothole causing traffic hazard',
-      estimatedResolutionDays: 3
-    },
-    {
-      requestId: 'mock_311_2',
-      serviceType: serviceType || 'graffiti',
-      status: status || 'in_progress',
-      latitude: 32.3625,
-      longitude: -86.2800,
-      address: '456 Dexter Ave, Montgomery, AL',
-      createdAt: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-      updatedAt: new Date().toISOString(),
-      description: 'Graffiti on public building',
-      estimatedResolutionDays: 2
-    },
-    {
-      requestId: 'mock_311_3',
-      serviceType: serviceType || 'trash',
-      status: status || 'closed',
-      latitude: 32.3600,
-      longitude: -86.2785,
-      address: '789 Perry St, Montgomery, AL',
-      createdAt: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
-      updatedAt: new Date(Date.now() - 86400000).toISOString(),
-      description: 'Overflowing public trash can',
-      estimatedResolutionDays: 1
-    }
-  ];
-  
-  return mockData.slice(0, limit);
-}
+// MOCK DATA ĐÃ BỊ XÓA - KHÔNG DÙNG DATA ẢO KHI BACKEND SẬP
+// THỢ RÈN: Circuit breaker pattern - không có fallback data ảo

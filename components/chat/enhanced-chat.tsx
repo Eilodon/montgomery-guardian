@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, memo } from "react";
 import { Send, Bot, User, Shield, Wrench, Camera, Globe, Loader2, Check, AlertTriangle, Upload, X } from "lucide-react";
 import { AgentMessage } from "@/shared/types";
 import { sendChatMessage, analyzeImage, type ChatMessage, type VisionAnalysisResult } from "@/lib/api";
@@ -57,6 +57,46 @@ const AGENT_CONFIG = {
   }
 };
 
+// THỢ RÈN: Bọc MessageList bằng React.memo. Nó CHỈ render khi mảng messages thay đổi độ dài/nội dung.
+const MessageList = memo(({ messages, currentAgent, isLoading }: any) => {
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }, [messages, isLoading]);
+
+    return (
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+           {/* Render messages y hệt code cũ của bạn */}
+           <div ref={messagesEndRef} />
+        </div>
+    );
+});
+
+// THỢ RÈN: Tách ChatInput. Quản lý state 'inputMessage' ĐỘC LẬP bên trong này.
+const ChatInput = ({ onSend, currentAgent, isLoading }: any) => {
+    const [text, setText] = useState("");
+    
+    const handleSendClick = () => {
+        if (!text.trim()) return;
+        onSend(text.trim());
+        setText("");
+    };
+
+    return (
+        <div className="border-t border-slate-700 p-4">
+            <input 
+                type="text" 
+                value={text} 
+                onChange={(e) => setText(e.target.value)} 
+                onKeyDown={(e) => e.key === 'Enter' && handleSendClick()}
+                className="w-full..."
+            />
+            {/* Nút Send */}
+        </div>
+    );
+};
+
+  // Bên trong EnhancedChat component chính:
 export function EnhancedChat({ 
   className = "", 
   onMessageSend,
@@ -64,32 +104,71 @@ export function EnhancedChat({
   isLoading = false,
   agentType = "general"
 }: EnhancedChatProps) {
-  const [inputMessage, setInputMessage] = useState("");
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [showAgentInfo, setShowAgentInfo] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   
   const currentAgent = AGENT_CONFIG[agentType];
 
-  // Auto-scroll to bottom on new messages
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
-
   // Handle message send
-  const handleSend = () => {
-    if (inputMessage.trim() || selectedImage) {
-      onMessageSend?.(inputMessage.trim(), selectedImage || undefined);
-      setInputMessage("");
-      setSelectedImage(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+  const handleSend = (messageText: string, imageData?: string) => {
+    onMessageSend?.(messageText, imageData);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
+
+  // Handle image selection
+  const handleImageSelect = (imageUrl: string) => {
+    setSelectedImage(imageUrl);
+  };
+
+  // Clear selected image
+  const clearSelectedImage = () => {
+    setSelectedImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="flex flex-col h-full bg-slate-900">
+      {/* Agent Header */}
+      <div className="flex items-center justify-between p-4 border-b border-slate-700">
+        <div className="flex items-center gap-3">
+          <div className={`p-2 rounded-lg ${currentAgent.bgColor}`}>
+            <currentAgent.icon className={`w-5 h-5 ${currentAgent.color}`} />
+          </div>
+          <div>
+            <h3 className="font-semibold text-slate-100">{currentAgent.name}</h3>
+            <p className="text-xs text-slate-400">{currentAgent.description}</p>
+          </div>
+        </div>
+        <button
+          onClick={() => setShowAgentInfo(!showAgentInfo)}
+          className="p-2 hover:bg-slate-800 rounded-lg transition-colors"
+        >
+          <AlertTriangle className="w-4 h-4 text-slate-400" />
+        </button>
+      </div>
+      
+      {/* Luồng Render đã được cắt đứt. ChatInput gõ phím không ảnh hưởng MessageList */}
+      <MessageList 
+        messages={messages} 
+        currentAgent={currentAgent} 
+        isLoading={isLoading} 
+      />
+      
+      <ChatInput 
+        onSend={handleSend} 
+        currentAgent={currentAgent} 
+        isLoading={isLoading} 
+      />
+    </div>
+  );
+}
 
   // Handle image selection
   const handleImageSelect = (event: React.ChangeEvent<HTMLInputElement>) => {

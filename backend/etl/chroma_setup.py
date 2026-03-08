@@ -1,6 +1,6 @@
 # backend/etl/chroma_setup.py
 import chromadb
-from chromadb.config import Settings
+from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 import pandas as pd
 from pathlib import Path
 import json
@@ -12,6 +12,8 @@ class ChromaSetup:
         self.client = chromadb.PersistentClient(
             path="./chroma_db"
         )
+        # Add embedding function
+        self.embedding_fn = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
         
     def create_collections(self):
         """Create collections for RAG knowledge base"""
@@ -19,18 +21,21 @@ class ChromaSetup:
             # Create crime incidents collection
             crime_collection = self.client.get_or_create_collection(
                 name="crime_incidents",
+                embedding_function=self.embedding_fn,
                 metadata={"description": "Crime incident data for RAG"}
             )
             
             # Create 311 requests collection
             requests_collection = self.client.get_or_create_collection(
                 name="service_requests_311", 
+                embedding_function=self.embedding_fn,
                 metadata={"description": "311 service request data for RAG"}
             )
             
             # Create city policies collection
             policies_collection = self.client.get_or_create_collection(
                 name="city_policies",
+                embedding_function=self.embedding_fn,
                 metadata={"description": "City policies and procedures"}
             )
             

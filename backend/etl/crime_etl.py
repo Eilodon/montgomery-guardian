@@ -1,6 +1,7 @@
 # backend/etl/crime_etl.py
 import asyncio
 import pandas as pd
+import json
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from api.core.database import SessionLocal
@@ -192,7 +193,7 @@ class CrimeETL:
             await redis_client.setex(
                 f"{self.redis_key}_metadata",
                 self.cache_ttl,
-                str(metadata)
+                json.dumps(metadata)
             )
             
             print(f"💾 Cached {len(df)} crime records")

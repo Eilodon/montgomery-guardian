@@ -4,8 +4,10 @@ from sqlalchemy.orm import Session
 from typing import Optional, List
 from ..models.schemas import Requests311Response, ServiceRequest311
 from ..core.database import get_db
+from ..core.redis import get_cached_data, cache_data
 from etl.arcgis_client import fetch_arcgis_dataset
 from datetime import datetime
+import json
 
 router = APIRouter()
 
@@ -22,14 +24,23 @@ async def get_311_requests(
     Supports filtering by service type, status, and pagination.
     """
     try:
+        # Check cache first
+        cache_key = f"requests_311_cache:{service_type}:{status}:{limit}:{offset}"
+        cached = await get_cached_data(cache_key)
+        if cached:
+            return Requests311Response(data=cached["data"], total=cached["total"])
+        
         # Build where clause for filtering
         where_conditions = ["1=1"]
+        params = {}
         
         if service_type:
-            where_conditions.append(f"UPPER(servicetype) LIKE UPPER('%{service_type}%')")
+            where_conditions.append("UPPER(servicetype) LIKE UPPER(:service_type)")
+            params["service_type"] = f"%{service_type}%"
         
         if status:
-            where_conditions.append(f"UPPER(status) LIKE UPPER('%{status}%')")
+            where_conditions.append("UPPER(status) LIKE UPPER(:status)")
+            params["status"] = f"%{status}%"
         
         where_clause = " AND ".join(where_conditions)
         
@@ -37,6 +48,7 @@ async def get_311_requests(
         df = await fetch_arcgis_dataset(
             dataset="requests_311",
             where=where_clause,
+            params=params,
             result_offset=offset,
             result_record_count=limit
         )
@@ -58,12 +70,13 @@ async def get_311_requests(
             )
             requests.append(request)
         
-        # Get total count (simplified - in production would make separate count query)
-        total = len(df) + offset  # Rough estimate
+        # Cache the results for 5 minutes
+        await cache_data(cache_key, {"data": requests, "total": len(requests)}, ttl=300)
         
-        return Requests311Response(data=requests, total=total)
+        return Requests311Response(data=requests, total=len(requests))
         
     except Exception as e:
+        print(f"❌ 311 requests fetch error: {e}")
         # Return mock data for demo if API fails
         mock_requests = _get_mock_311_data(service_type, status, limit)
         return Requests311Response(data=mock_requests, total=len(mock_requests))

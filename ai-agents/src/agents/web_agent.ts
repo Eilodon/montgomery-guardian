@@ -1,7 +1,8 @@
 // ai-agents/src/agents/web_agent.ts
-import { scrapeTool } from '../tools/scrape_tool';
+import { scrapeTool, ToolResponse } from '../tools/scrape_tool';
+import { AgentInput } from '../types/agents';
 
-export async function webAgent(ai: any, input: any): Promise<any> {
+export async function webAgent(ai: any, input: AgentInput): Promise<any> {
   try {
     console.log('Web agent processing request:', { message: input.message });
 
@@ -14,14 +15,22 @@ export async function webAgent(ai: any, input: any): Promise<any> {
 
     // Use tools to get recent web data
     let webData = null;
+    let webContext = '';
     try {
-      webData = await scrapeTool({
+      const toolRes = await scrapeTool({
         query: input.message,
         limit: 5,
         userLocation: input.userLocation
       });
+      if (toolRes.success) {
+        webData = toolRes.data;
+      } else {
+        // Nhét thông báo lỗi của Tool vào context để LLM biết đường trả lời
+        webContext = `\nLưu ý hệ thống: ${toolRes.message}`;
+      }
     } catch (toolError) {
       console.warn('Web scraping tool failed:', toolError);
+      webContext = '\nLưu ý hệ thống: Không thể truy cập thông tin thời gian thực hiện tại.';
     }
 
     const { text } = await ai.generate({
@@ -30,6 +39,7 @@ export async function webAgent(ai: any, input: any): Promise<any> {
 ${locationContext}
 ${historyContext}
 ${webData ? `Recent web information: ${JSON.stringify(webData).substring(0, 500)}...` : ''}
+${webContext}
 
 User question: "${input.message}"
 

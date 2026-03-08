@@ -4,8 +4,10 @@ from sqlalchemy.orm import Session
 from typing import Optional, List
 from ..models.schemas import CrimeResponse, CrimeIncident, DistrictsResponse, DistrictData
 from ..core.database import get_db
+from ..core.redis import get_cached_data, cache_data
 from etl.arcgis_client import fetch_arcgis_dataset
 from datetime import datetime
+import json
 
 router = APIRouter()
 
@@ -21,15 +23,25 @@ async def get_crime_incidents(
     Supports filtering by neighborhood and pagination.
     """
     try:
+        # Check cache first
+        cache_key = f"crime_cache:{neighborhood}:{limit}:{offset}"
+        cached = await get_cached_data(cache_key)
+        if cached:
+            return CrimeResponse(data=cached["data"], total=cached["total"])
+        
         # Build where clause for filtering
-        where_clause = "1=1"
+        params = {}
         if neighborhood:
-            where_clause = f"UPPER(neighborhood) LIKE UPPER('%{neighborhood}%')"
+            where_clause = "UPPER(neighborhood) LIKE UPPER(:neighborhood)"
+            params["neighborhood"] = f"%{neighborhood}%"
+        else:
+            where_clause = "1=1"
         
         # Fetch data from ArcGIS
         df = await fetch_arcgis_dataset(
             dataset="crime_mapping",
             where=where_clause,
+            params=params,
             result_offset=offset,
             result_record_count=limit
         )
@@ -49,12 +61,13 @@ async def get_crime_incidents(
             )
             incidents.append(incident)
         
-        # Get total count (simplified - in production would make separate count query)
-        total = len(df) + offset  # Rough estimate
+        # Cache the results for 5 minutes
+        await cache_data(cache_key, {"data": incidents, "total": len(incidents)}, ttl=300)
         
-        return CrimeResponse(data=incidents, total=total)
+        return CrimeResponse(data=incidents, total=len(incidents))
         
     except Exception as e:
+        print(f"❌ Crime data fetch error: {e}")
         mock_incidents = _get_mock_crime_data(neighborhood, limit)
         return CrimeResponse(data=mock_incidents, total=len(mock_incidents))
 

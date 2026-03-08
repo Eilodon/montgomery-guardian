@@ -13,52 +13,108 @@ logger = logging.getLogger(__name__)
 
 def get_database_url() -> str:
     """Get database URL from environment or default to PostgreSQL"""
-    # Check if running from backend directory structure
-    if os.path.exists('../../backend/api/core/config.py'):
-        import sys
-        sys.path.append('../../backend')
-        from api.core.config import settings
-        return settings.database_url
-    else:
-        # Default PostgreSQL connection
-        return os.getenv('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/montgomery_guardian')
+    # Default PostgreSQL connection
+    return os.getenv('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/montgomery_guardian')
 
 def query_crime_data(engine) -> pd.DataFrame:
-    """Query crime incidents from PostGIS database"""
-    logger.info("Querying crime incidents data...")
+    """Query crime incidents from PostGIS database with pushdown aggregation"""
+    logger.info("Querying crime incidents data with PostGIS aggregation...")
     
+    # THỢ RÈN: Pushdown aggregation using ST_SnapToGrid
     query = """
+    WITH grid_cells AS (
+        SELECT 
+            ST_SnapToGrid(ST_SetSRID(ST_MakePoint(longitude, latitude), 4326), 0.0045, 0.0045) as grid_point,
+            crimetype,
+            incidentdate,
+            status,
+            -- Extract temporal features at database level
+            EXTRACT(HOUR FROM incidentdate) as hour,
+            EXTRACT(DOW FROM incidentdate) as day_of_week,
+            EXTRACT(MONTH FROM incidentdate) as month,
+            EXTRACT(QUARTER FROM incidentdate) as quarter,
+            EXTRACT(DOY FROM incidentdate) as day_of_year,
+            EXTRACT(WEEK FROM incidentdate) as week_of_year,
+            CASE WHEN EXTRACT(DOW FROM incidentdate) IN (5, 6) THEN 1 ELSE 0 END as is_weekend,
+            CASE WHEN EXTRACT(HOUR FROM incidentdate) BETWEEN 20 AND 23 THEN 1 ELSE 0 END as is_night,
+            CASE WHEN EXTRACT(HOUR FROM incidentdate) BETWEEN 9 AND 17 THEN 1 ELSE 0 END as is_business_hours,
+            -- Distance to downtown Montgomery (32.3617, -86.2792)
+            ST_Distance(
+                ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography,
+                ST_SetSRID(ST_MakePoint(-86.2792, 32.3617), 4326)::geography
+            ) as distance_to_downtown
+        FROM crime_incidents 
+        WHERE incidentdate >= CURRENT_DATE - INTERVAL '90 days'
+    ),
+    aggregated_grids AS (
+        SELECT 
+            ST_X(grid_point) as longitude,
+            ST_Y(grid_point) as latitude,
+            grid_point,
+            -- Aggregate counts per grid
+            COUNT(*) as crime_count_90d,
+            COUNT(*) FILTER (WHERE incidentdate >= CURRENT_DATE - INTERVAL '7 days') as crime_count_7d,
+            COUNT(*) FILTER (WHERE incidentdate >= CURRENT_DATE - INTERVAL '30 days') as crime_count_30d,
+            -- Crime type aggregations
+            COUNT(*) FILTER (WHERE crimetype ILIKE '%assault%' OR crimetype ILIKE '%robbery%' OR crimetype ILIKE '%homicide%') as crime_type_violent_7d,
+            COUNT(*) FILTER (WHERE crimetype ILIKE '%burglary%' OR crimetype ILIKE '%theft%' OR crimetype ILIKE '%larceny%') as crime_type_property_7d,
+            COUNT(*) FILTER (WHERE crimetype ILIKE '%drug%' OR crimetype ILIKE '%narcotic%') as crime_type_drug_7d,
+            COUNT(*) FILTER (WHERE crimetype ILIKE '%other%' OR crimetype NOT ILIKE '%assault%' AND crimetype NOT ILIKE '%robbery%' AND crimetype NOT ILIKE '%homicide%' AND crimetype NOT ILIKE '%burglary%' AND crimetype NOT ILIKE '%theft%' AND crimetype NOT ILIKE '%larceny%' AND crimetype NOT ILIKE '%drug%' AND crimetype NOT ILIKE '%narcotic%') as crime_type_other_7d,
+            -- Temporal features (use most recent record)
+            MAX(hour) as hour,
+            MAX(day_of_week) as day_of_week,
+            MAX(month) as month,
+            MAX(quarter) as quarter,
+            MAX(day_of_year) as day_of_year,
+            MAX(week_of_year) as week_of_year,
+            MAX(is_weekend) as is_weekend,
+            MAX(is_night) as is_night,
+            MAX(is_business_hours) as is_business_hours,
+            AVG(distance_to_downtown) as distance_to_downtown
+        FROM grid_cells
+        GROUP BY grid_point, ST_X(grid_point), ST_Y(grid_point)
+    )
     SELECT 
-        objectid,
-        crimetype,
-        latitude,
         longitude,
-        neighborhood,
-        incidentdate,
-        status,
-        description
-    FROM crime_incidents 
-    WHERE incidentdate >= CURRENT_DATE - INTERVAL '90 days'
-    ORDER BY incidentdate DESC
+        latitude,
+        crime_count_90d,
+        crime_count_7d,
+        crime_count_30d,
+        crime_type_violent_7d,
+        crime_type_property_7d,
+        crime_type_drug_7d,
+        crime_type_other_7d,
+        hour,
+        day_of_week,
+        month,
+        quarter,
+        day_of_year,
+        week_of_year,
+        is_weekend,
+        is_night,
+        is_business_hours,
+        distance_to_downtown
+    FROM aggregated_grids
+    ORDER BY crime_count_7d DESC, crime_count_30d DESC
     """
     
     try:
         df = pd.read_sql(query, engine)
-        logger.info(f"✅ Retrieved {len(df)} crime records")
+        logger.info(f"✅ Retrieved {len(df)} aggregated grid cells")
         
-        # Convert timestamp columns
-        df['incidentdate'] = pd.to_datetime(df['incidentdate'])
+        # Convert to appropriate types
+        numeric_cols = ['crime_count_90d', 'crime_count_7d', 'crime_count_30d', 
+                        'crime_type_violent_7d', 'crime_type_property_7d', 'crime_type_drug_7d', 'crime_type_other_7d',
+                        'hour', 'day_of_week', 'month', 'quarter', 'day_of_year', 'week_of_year',
+                        'is_weekend', 'is_night', 'is_business_hours', 'distance_to_downtown']
         
-        # Add derived columns
-        df['year'] = df['incidentdate'].dt.year
-        df['month'] = df['incidentdate'].dt.month
-        df['day'] = df['incidentdate'].dt.day
-        df['hour'] = df['incidentdate'].dt.hour
-        df['day_of_week'] = df['incidentdate'].dt.dayofweek
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         
         return df
     except Exception as e:
-        logger.error(f"❌ Failed to query crime data: {e}")
+        logger.error(f"❌ Failed to query aggregated crime data: {e}")
         return pd.DataFrame()
 
 def query_311_data(engine) -> pd.DataFrame:

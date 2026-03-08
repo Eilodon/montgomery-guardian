@@ -150,76 +150,68 @@ class Requests311ETL:
         """Load transformed data to database and cache"""
         print("💾 Loading 311 requests data to database and cache...")
         
+        import json
+        from sqlalchemy.dialects.postgresql import insert
+        from api.models.requests import ServiceRequest311
+        
+        db = SessionLocal()
         try:
-            # 1. Store in Database
-            db = SessionLocal()
-            try:
-                from api.models.requests import ServiceRequest311
-                
-                records_added = 0
-                records_updated = 0
-                
-                for _, row in df.iterrows():
-                    existing = db.query(ServiceRequest311).filter(ServiceRequest311.objectid == int(row['requestId'])).first()
-                    
-                    if existing:
-                        existing.status = row['status']
-                        existing.datemodified = row['updatedAt']
-                        existing.description = str(row['description']) if pd.notna(row['description']) else None
-                        records_updated += 1
-                    else:
-                        request = ServiceRequest311(
-                            objectid=int(row['requestId']),
-                            servicetype=row['serviceType'],
-                            latitude=float(row['latitude']),
-                            longitude=float(row['longitude']),
-                            address=str(row['address']) if pd.notna(row['address']) else None,
-                            datecreated=row['createdAt'],
-                            datemodified=row['updatedAt'],
-                            status=row['status'],
-                            description=str(row['description']) if pd.notna(row['description']) else None,
-                            estimatedresolution=str(row['estimatedResolutionDays']) if pd.notna(row['estimatedResolutionDays']) else None,
-                            geom=f"SRID=4326;POINT({row['longitude']} {row['latitude']})"
-                        )
-                        db.add(request)
-                        records_added += 1
-                
+            # Bulk UPSERT like crime_etl (50x faster)
+            records = [
+                {
+                    "objectid": int(row['requestId']),
+                    "servicetype": row['serviceType'],
+                    "latitude": float(row['latitude']),
+                    "longitude": float(row['longitude']),
+                    "address": str(row['address']),
+                    "datecreated": row['createdAt'],
+                    "datemodified": row['updatedAt'],
+                    "status": row['status'],
+                    "description": str(row.get('description', '')) if pd.notna(row.get('description')) else None,
+                    "estimatedresolution": int(row['estimatedResolutionDays']),
+                    "geom": f"SRID=4326;POINT({row['longitude']} {row['latitude']})"
+                }
+                for _, row in df.iterrows()
+            ]
+            
+            if records:
+                stmt = insert(ServiceRequest311).values(records)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=['objectid'],
+                    set_={
+                        "status": stmt.excluded.status,
+                        "datemodified": stmt.excluded.datemodified,
+                        "description": stmt.excluded.description,
+                    }
+                )
+                db.execute(stmt)
                 db.commit()
-                print(f"💾 DB: Added {records_added}, Updated {records_updated} 311 request records")
-            except Exception as db_e:
-                print(f"❌ DB Error: {db_e}")
-                db.rollback()
-            finally:
-                db.close()
-
-            # 2. Redis logic below
-            # Convert to JSON for Redis storage
-            data_json = df.to_json(orient='records', date_format='iso')
+                print(f"💾 DB: Bulk UPSERT {len(records)} 311 records")
             
-            # Store in Redis with TTL
-            await redis_client.setex(
-                self.redis_key,
-                self.cache_ttl,
-                data_json
-            )
+            # Redis uses json.dumps (not str(dict) anymore)
+            # Convert Timestamp objects to ISO format for JSON serialization
+            df_for_json = df.copy()
+            for col in df_for_json.select_dtypes(include=['datetime64[ns]', 'datetime64']).columns:
+                df_for_json[col] = df_for_json[col].apply(lambda x: x.isoformat() if pd.notna(x) else None)
             
-            # Also store metadata
+            data_json = json.dumps(df_for_json.to_dict('records'))
+            await redis_client.setex(self.redis_key, self.cache_ttl, data_json)
+            
             metadata = {
                 'last_updated': datetime.now().isoformat(),
                 'record_count': len(df),
                 'source': 'arcgis'
             }
-            await redis_client.setex(
-                f"{self.redis_key}_metadata",
-                self.cache_ttl,
-                str(metadata)
-            )
+            await redis_client.setex(f"{self.redis_key}_metadata", self.cache_ttl, json.dumps(metadata))
             
             print(f"💾 Cached {len(df)} 311 request records")
             
         except Exception as e:
-            print(f"❌ Failed to cache/save 311 requests data: {e}")
+            db.rollback()
+            print(f"❌ Failed to cache/save 311 requests: {e}")
             raise
+        finally:
+            db.close()
 
     async def get_cached_requests_data(self) -> pd.DataFrame:
         """Get cached 311 requests data from Redis"""

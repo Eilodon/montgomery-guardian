@@ -3,9 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from ..models.schemas import ChatResponse, AgentMessage
+from ..core.config import settings
 from datetime import datetime
 import httpx
-import os
 
 router = APIRouter()
 
@@ -14,8 +14,8 @@ class ChatRequest(BaseModel):
     agent_type: Optional[str] = None  # Let system auto-detect if not specified
     context: Optional[dict] = None
 
-# AI Agents service URL (would be deployed separately)
-AI_AGENTS_URL = os.getenv("AI_AGENTS_URL", "http://localhost:3001")
+# AI Agents service URL from config
+AI_AGENTS_URL = settings.ai_agents_url
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat_with_agent(request: ChatRequest):

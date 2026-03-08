@@ -66,53 +66,52 @@ export function CameraUpload({ onImageCapture, isProcessing = false }: CameraUpl
 
   const capturePhoto = useCallback(() => {
     if (!videoRef.current || !canvasRef.current) return;
-
     const video = videoRef.current;
     const canvas = canvasRef.current;
     const context = canvas.getContext("2d");
-    
     if (!context) return;
 
-    // Set canvas dimensions to match video
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    
-    // Draw video frame to canvas
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
     
-    // Get image data as base64
-    const imageData = canvas.toDataURL("image/jpeg", 0.9);
-    
-    // Get current location
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const metadata: ImageMetadata = {
-          timestamp: new Date().toISOString(),
-          location: {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude
-          },
-          deviceInfo: navigator.userAgent
-        };
-        onImageCapture(imageData, metadata);
-        stopCamera();
-      },
-      (error) => {
-        console.warn("Location access denied:", error);
-        const metadata: ImageMetadata = {
-          timestamp: new Date().toISOString(),
-          deviceInfo: navigator.userAgent
-        };
-        onImageCapture(imageData, metadata);
-        stopCamera();
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 60000
-      }
-    );
-  }, [onImageCapture, stopCamera]);
+    // THỢ RÈN: Dùng toBlob thay vì toDataURL.
+    canvas.toBlob((blob) => {
+        if (!blob) {
+            setError("Lỗi xử lý luồng ảnh.");
+            return;
+        }
+
+        // Tạo tham chiếu bộ nhớ cực nhẹ
+        const objectUrl = URL.createObjectURL(blob);
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const metadata: ImageMetadata = {
+                    timestamp: new Date().toISOString(),
+                    location: {
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude
+                    },
+                    deviceInfo: navigator.userAgent
+                };
+                
+                // Truyền objectUrl lên UI, kèm theo Blob thật (nếu API cần File upload sau này)
+                onImageCapture(objectUrl, metadata);
+                stopCamera();
+            },
+            (error) => {
+                const metadata: ImageMetadata = {
+                    timestamp: new Date().toISOString(),
+                    deviceInfo: navigator.userAgent
+                };
+                onImageCapture(objectUrl, metadata);
+                stopCamera();
+            },
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        );
+    }, "image/jpeg", 0.85); // Nén JPEG 85% trực tiếp ở Native Layer
+}, [onImageCapture, stopCamera]);
 
   const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -130,20 +129,15 @@ export function CameraUpload({ onImageCapture, isProcessing = false }: CameraUpl
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const imageData = e.target?.result as string;
-      
-      // Extract EXIF data for location if available
-      const metadata: ImageMetadata = {
-        timestamp: new Date().toISOString(),
-        deviceInfo: `Upload: ${file.type}, ${Math.round(file.size / 1024)}KB`
-      };
-      
-      onImageCapture(imageData, metadata);
+    // THỢ RÈN: Dùng ObjectURL thay vì Base64 để tiết kiệm RAM
+    const objectUrl = URL.createObjectURL(file);
+    
+    const metadata: ImageMetadata = {
+      timestamp: new Date().toISOString(),
+      deviceInfo: `Upload: ${file.type}, ${Math.round(file.size / 1024)}KB`
     };
     
-    reader.readAsDataURL(file);
+    onImageCapture(objectUrl, metadata);
   }, [onImageCapture]);
 
   const triggerFileUpload = () => {

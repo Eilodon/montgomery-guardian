@@ -13,134 +13,6 @@ interface Map311OverlayProps {
   showLayer?: boolean;
 }
 
-// Mock 311 service request data
-const mock311Data: ServiceRequest311[] = [
-  {
-    requestId: "req_1",
-    serviceType: "pothole",
-    status: "open",
-    latitude: 32.3617,
-    longitude: -86.2792,
-    address: "123 Dexter Ave, Montgomery, AL",
-    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    description: "Large pothole in the middle of the street causing traffic hazards",
-    estimatedResolutionDays: 3,
-  },
-  {
-    requestId: "req_2",
-    serviceType: "graffiti",
-    status: "in_progress",
-    latitude: 32.3800,
-    longitude: -86.3000,
-    address: "456 Madison Ave, Montgomery, AL",
-    createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    description: "Graffiti on public building wall",
-    estimatedResolutionDays: 5,
-  },
-  {
-    requestId: "req_3",
-    serviceType: "trash",
-    status: "closed",
-    latitude: 32.3400,
-    longitude: -86.2600,
-    address: "789 Perry St, Montgomery, AL",
-    createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    description: "Overflowing trash container",
-    estimatedResolutionDays: 1,
-  },
-  {
-    requestId: "req_4",
-    serviceType: "flooding",
-    status: "open",
-    latitude: 32.3700,
-    longitude: -86.2900,
-    address: "321 Commerce St, Montgomery, AL",
-    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-    description: "Standing water in parking lot after heavy rain",
-    estimatedResolutionDays: 2,
-  },
-  {
-    requestId: "req_5",
-    serviceType: "overgrown_grass",
-    status: "in_progress",
-    latitude: 32.3500,
-    longitude: -86.2800,
-    address: "654 Coosa St, Montgomery, AL",
-    createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    description: "Overgrown vegetation blocking sidewalk",
-    estimatedResolutionDays: 7,
-  },
-  {
-    requestId: "req_6",
-    serviceType: "pothole",
-    status: "closed",
-    latitude: 32.3900,
-    longitude: -86.3100,
-    address: "987 Mobile St, Montgomery, AL",
-    createdAt: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-    description: "Multiple small potholes repaired",
-    estimatedResolutionDays: 3,
-  },
-  {
-    requestId: "req_7",
-    serviceType: "other",
-    status: "open",
-    latitude: 32.3300,
-    longitude: -86.2500,
-    address: "147 Washington Ave, Montgomery, AL",
-    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    description: "Damaged street sign needs replacement",
-    estimatedResolutionDays: 4,
-  },
-  {
-    requestId: "req_8",
-    serviceType: "graffiti",
-    status: "open",
-    latitude: 32.4000,
-    longitude: -86.3200,
-    address: "258 Bibb St, Montgomery, AL",
-    createdAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
-    description: "Graffiti on public bridge",
-    estimatedResolutionDays: 5,
-  },
-];
-
-// Generate more mock data for better visualization
-const generateMoreMockData = (): ServiceRequest311[] => {
-  const additionalData: ServiceRequest311[] = [];
-  const serviceTypes: ServiceRequest311["serviceType"][] = ["pothole", "graffiti", "trash", "flooding", "overgrown_grass", "other"];
-  const statuses: ServiceRequest311["status"][] = ["open", "in_progress", "closed"];
-  const streets = [
-    "Dexter Ave", "Madison Ave", "Perry St", "Commerce St",
-    "Coosa St", "Mobile St", "Washington Ave", "Bibb St"
-  ];
-
-  for (let i = 0; i < 30; i++) {
-    additionalData.push({
-      requestId: `req_${i + 9}`,
-      serviceType: serviceTypes[Math.floor(Math.random() * serviceTypes.length)],
-      status: statuses[Math.floor(Math.random() * statuses.length)],
-      latitude: 32.30 + Math.random() * 0.15,
-      longitude: -86.35 + Math.random() * 0.15,
-      address: `${Math.floor(Math.random() * 999) + 1} ${streets[Math.floor(Math.random() * streets.length)]}, Montgomery, AL`,
-      createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
-      updatedAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-      description: `Service request ${i + 9} - ${serviceTypes[Math.floor(Math.random() * serviceTypes.length)]} issue`,
-      estimatedResolutionDays: Math.floor(Math.random() * 7) + 1,
-    });
-  }
-
-  return additionalData;
-};
-
 export function Map311Overlay({
   className = "",
   onRequestClick,
@@ -156,33 +28,36 @@ export function Map311Overlay({
 
   // Load 311 service request data
   useEffect(() => {
+    const abortController = new AbortController();
+
     const loadServiceRequests = async () => {
       setIsLoading(true);
-
       try {
-        // Try to load real data from API
-        const response = await fetch("/api/v1/requests-311?limit=100");
-
-        if (response.ok) {
-          const apiData = await response.json();
-          const requests = apiData.data || [];
-          setServiceRequests(requests);
-        } else {
-          // Fallback to mock data
-          const allMockData = [...mock311Data, ...generateMoreMockData()];
-          setServiceRequests(allMockData);
-        }
-      } catch (error) {
-        console.error("Failed to load 311 data:", error);
-        // Fallback to mock data
-        const allMockData = [...mock311Data, ...generateMoreMockData()];
-        setServiceRequests(allMockData);
+        const response = await fetch("/api/v1/requests-311?limit=500", {
+            signal: abortController.signal
+        });
+        
+        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+        
+        const apiData = await response.json();
+        setServiceRequests(apiData.data || []);
+      } catch (error: any) {
+        if (error.name === 'AbortError') return;
+        
+        console.error("[FATAL] 311 requests sync failed:", error);
+        // THỢ RÈN: KHÔNG DÙNG MOCK DATA. Gán mảng rỗng.
+        setServiceRequests([]); 
+        // TIP: Có thể dispatch event hiển thị Toast Notification tại đây
       } finally {
-        setIsLoading(false);
+        if (!abortController.signal.aborted) {
+            setIsLoading(false);
+        }
       }
     };
 
     loadServiceRequests();
+    
+    return () => abortController.abort();
   }, []);
 
   // Add 311 markers layer to map when data is loaded

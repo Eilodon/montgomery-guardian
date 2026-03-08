@@ -12,116 +12,6 @@ interface CrimeHeatmapProps {
   filterRiskLevel?: "all" | "critical" | "high" | "medium" | "low";
 }
 
-// Mock crime data for demonstration
-const mockCrimeData: CrimeIncident[] = [
-  {
-    id: "crime_1",
-    type: "violent",
-    latitude: 32.3617,
-    longitude: -86.2792,
-    neighborhood: "Downtown",
-    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
-    status: "open",
-    description: "Assault reported near downtown area",
-  },
-  {
-    id: "crime_2",
-    type: "property",
-    latitude: 32.3800,
-    longitude: -86.3000,
-    neighborhood: "Capitol Heights",
-    timestamp: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(), // 6 hours ago
-    status: "investigating",
-    description: "Vehicle break-in reported",
-  },
-  {
-    id: "crime_3",
-    type: "drug",
-    latitude: 32.3400,
-    longitude: -86.2600,
-    neighborhood: "Oak Park",
-    timestamp: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(), // 12 hours ago
-    status: "closed",
-    description: "Drug-related incident",
-  },
-  {
-    id: "crime_4",
-    type: "property",
-    latitude: 32.3700,
-    longitude: -86.2900,
-    neighborhood: "Garden District",
-    timestamp: new Date(Date.now() - 18 * 60 * 60 * 1000).toISOString(), // 18 hours ago
-    status: "open",
-    description: "Burglary in residential area",
-  },
-  {
-    id: "crime_5",
-    type: "violent",
-    latitude: 32.3500,
-    longitude: -86.2800,
-    neighborhood: "Bethesda",
-    timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // 24 hours ago
-    status: "investigating",
-    description: "Robbery incident",
-  },
-  {
-    id: "crime_6",
-    type: "other",
-    latitude: 32.3900,
-    longitude: -86.3100,
-    neighborhood: "Cloverdale",
-    timestamp: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), // 3 hours ago
-    status: "open",
-    description: "Suspicious activity reported",
-  },
-  {
-    id: "crime_7",
-    type: "property",
-    latitude: 32.3300,
-    longitude: -86.2500,
-    neighborhood: "Highland Park",
-    timestamp: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(), // 8 hours ago
-    status: "closed",
-    description: "Theft from vehicle",
-  },
-  {
-    id: "crime_8",
-    type: "drug",
-    latitude: 32.4000,
-    longitude: -86.3200,
-    neighborhood: "Woodley Park",
-    timestamp: new Date(Date.now() - 15 * 60 * 60 * 1000).toISOString(), // 15 hours ago
-    status: "investigating",
-    description: "Narcotics violation",
-  },
-];
-
-// Generate more mock data for heatmap effect
-const generateMoreMockData = (): CrimeIncident[] => {
-  const additionalData: CrimeIncident[] = [];
-  const neighborhoods = [
-    "Downtown", "Capitol Heights", "Oak Park", "Garden District", 
-    "Bethesda", "Cloverdale", "Highland Park", "Woodley Park"
-  ];
-  const types: CrimeIncident["type"][] = ["violent", "property", "drug", "other"];
-  const statuses: CrimeIncident["status"][] = ["open", "closed", "investigating"];
-  
-  for (let i = 0; i < 50; i++) {
-    additionalData.push({
-      id: `crime_${i + 9}`,
-      type: types[Math.floor(Math.random() * types.length)],
-      latitude: 32.30 + Math.random() * 0.15,
-      longitude: -86.35 + Math.random() * 0.15,
-      neighborhood: neighborhoods[Math.floor(Math.random() * neighborhoods.length)],
-      timestamp: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
-      status: statuses[Math.floor(Math.random() * statuses.length)],
-      description: `Incident ${i + 9} - ${types[Math.floor(Math.random() * types.length)]} case`,
-    });
-  }
-  
-  return additionalData;
-};
-
 export function CrimeHeatmap({ 
   className = "", 
   onIncidentClick,
@@ -135,33 +25,36 @@ export function CrimeHeatmap({
 
   // Load crime data
   useEffect(() => {
+    const abortController = new AbortController();
+
     const loadCrimeData = async () => {
       setIsLoading(true);
-      
       try {
-        // Try to load real data from API
-        const response = await fetch("/api/v1/crime?limit=100");
+        const response = await fetch("/api/v1/crime?limit=500", {
+            signal: abortController.signal
+        });
         
-        if (response.ok) {
-          const apiData = await response.json();
-          const incidents = apiData.data || [];
-          setCrimeData(incidents);
-        } else {
-          // Fallback to mock data
-          const allMockData = [...mockCrimeData, ...generateMoreMockData()];
-          setCrimeData(allMockData);
-        }
-      } catch (error) {
-        console.error("Failed to load crime data:", error);
-        // Fallback to mock data
-        const allMockData = [...mockCrimeData, ...generateMoreMockData()];
-        setCrimeData(allMockData);
+        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+        
+        const apiData = await response.json();
+        setCrimeData(apiData.data || []);
+      } catch (error: any) {
+        if (error.name === 'AbortError') return;
+        
+        console.error("[FATAL] Map Topology sync failed:", error);
+        // THỢ RÈN: KHÔNG DÙNG MOCK DATA. Gán mảng rỗng.
+        setCrimeData([]); 
+        // TIP: Có thể dispatch event hiển thị Toast Notification tại đây
       } finally {
-        setIsLoading(false);
+        if (!abortController.signal.aborted) {
+            setIsLoading(false);
+        }
       }
     };
 
     loadCrimeData();
+    
+    return () => abortController.abort();
   }, [timeRange]);
 
   // Add heatmap layer to map when data is loaded

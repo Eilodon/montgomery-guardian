@@ -211,67 +211,55 @@ def engineer_features(crime_df: pd.DataFrame, requests_df: Optional[pd.DataFrame
     return result_df
 
 def create_grid_predictions(model_data: dict, grid_bounds: Tuple[float, float, float, float] = (32.3, 32.4, -86.35, -86.2)) -> pd.DataFrame:
-    """
-    Create predictions for all grid cells in the specified bounds
-    """
-    from .train_xgboost import predict
+    """ THỢ RÈN: Vectorized Grid Prediction """
+    from .train_xgboost import predict_batch # Sẽ viết ở dưới
     
     min_lat, max_lat, min_lng, max_lng = grid_bounds
     grid_size = 0.0045
     
-    # Generate grid cells
-    grid_lats = np.arange(min_lat, max_lat, grid_size)
-    grid_lngs = np.arange(min_lng, max_lng, grid_size)
+    # 1. Tạo ma trận Grid bằng Numpy (Không dùng for loop)
+    lats = np.arange(min_lat, max_lat, grid_size)
+    lngs = np.arange(min_lng, max_lng, grid_size)
+    grid_lats, grid_lngs = np.meshgrid(lats, lngs)
     
-    predictions = []
+    df_grid = pd.DataFrame({
+        'latitude': grid_lats.flatten(),
+        'longitude': grid_lngs.flatten()
+    })
+    
     current_time = pd.Timestamp.now()
     
-    for grid_lat in grid_lats:
-        for grid_lng in grid_lngs:
-            # Create features for this grid cell
-            features = {
-                'hour': current_time.hour,
-                'day_of_week': current_time.dayofweek,
-                'month': current_time.month,
-                'is_weekend': int(current_time.dayofweek in [5, 6]),
-                'is_night': int(current_time.hour in range(20, 24)),
-                'quarter': current_time.quarter,
-                'is_business_hours': int(current_time.hour in range(9, 18)),
-                'day_of_year': current_time.dayofyear,
-                'week_of_year': current_time.isocalendar().week,
-                'distance_to_downtown': np.sqrt(
-                    (grid_lat - 32.3617)**2 + (grid_lng - -86.2792)**2
-                ),
-                'crime_count_7d': 0,  # Would need real-time data
-                'crime_count_30d': 0,  # Would need real-time data
-                'open_311_count': 0,  # Would need real-time data
-                'total_311_count_30d': 0,  # Would need real-time data
-            }
-            
-            # Add crime type features (default to 0)
-            for crime_type in ['violent', 'property', 'drug', 'other']:
-                features[f'crime_type_{crime_type}_7d'] = 0
-            
-            # Add service type features (default to 0)
-            for service_type in ['pothole', 'graffiti', 'trash', 'flooding', 'overgrown_grass', 'other']:
-                features[f'service_type_{service_type}_count'] = 0
-            
-            try:
-                prediction = predict(model_data, features)
-                predictions.append({
-                    'gridCellId': f"{grid_lat}_{grid_lng}",
-                    'latitude': grid_lat,
-                    'longitude': grid_lng,
-                    'riskLevel': prediction['riskLevel'],
-                    'confidenceScore': prediction['confidenceScore'],
-                    'shapFeatures': prediction['shapFeatures'],
-                    'generatedAt': current_time.isoformat()
-                })
-            except Exception as e:
-                logger.warning(f"Failed to predict for grid {grid_lat}_{grid_lng}: {e}")
-                continue
+    # 2. Vectorized Feature Assignment
+    df_grid['gridCellId'] = df_grid['latitude'].astype(str) + '_' + df_grid['longitude'].astype(str)
+    df_grid['hour'] = current_time.hour
+    df_grid['day_of_week'] = current_time.dayofweek
+    df_grid['month'] = current_time.month
+    df_grid['is_weekend'] = int(current_time.dayofweek in [5, 6])
+    df_grid['is_night'] = int(current_time.hour in range(20, 24))
+    df_grid['quarter'] = current_time.quarter
+    df_grid['is_business_hours'] = int(current_time.hour in range(9, 18))
+    df_grid['day_of_year'] = current_time.dayofyear
+    df_grid['week_of_year'] = current_time.isocalendar().week
     
-    return pd.DataFrame(predictions)
+    # Tính khoảng cách Vectorized
+    df_grid['distance_to_downtown'] = np.sqrt(
+        (df_grid['latitude'] - 32.3617)**2 + (df_grid['longitude'] - -86.2792)**2
+    )
+    
+    # Fill các cột missing bằng 0 (Vectorized)
+    feature_cols = model_data['feature_cols']
+    for col in feature_cols:
+        if col not in df_grid.columns:
+            df_grid[col] = 0
+
+    # 3. Batch Prediction
+    predictions_df = predict_batch(model_data, df_grid[feature_cols])
+    
+    # 4. Merge kết quả
+    result_df = pd.concat([df_grid[['gridCellId', 'latitude', 'longitude']], predictions_df], axis=1)
+    result_df['generatedAt'] = current_time.isoformat()
+    
+    return result_df
 
 def create_grid_predictions_ensemble(ensemble_model) -> pd.DataFrame:
     """

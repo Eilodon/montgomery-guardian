@@ -46,21 +46,34 @@ export interface VisionAnalysisResult {
   prefilledForm: Partial<ServiceRequest311>;
 }
 
-export interface AgentMessage {
+// THỢ RÈN: Ép kiểu chéo (Discriminated Unions) cho Metadata
+export type AgentType = 'safety_intel' | 'service_311' | 'vision' | 'web_scraper' | 'general';
+
+export interface BaseAgentMessage {
   role: 'user' | 'assistant';
   content: string;
-  agentType: 'safety_intel' | 'service_311' | 'vision' | 'web_scraper';
-  timestamp: string;
-  confidence?: number; // AI confidence score
-  metadata?: {
-    safetyScore?: 'A' | 'B' | 'C' | 'D' | 'F';
-    mapCenter?: [number, number];
-    incidents?: CrimeIncident[];
-    requests311?: ServiceRequest311[];
-    imageUrl?: string; // For vision analysis
-    analysisResult?: VisionAnalysisResult; // Vision analysis results
-  };
+  timestamp: string; // ISO 8601
 }
+
+export interface AssistantMessage extends BaseAgentMessage {
+  role: 'assistant';
+  agentType: AgentType;
+  confidence?: number;
+  metadata?: {
+     // Explicit typing
+     safetyScore?: 'A' | 'B' | 'C' | 'D' | 'F';
+     mapCenter?: [number, number]; // [lng, lat] strictly
+     imageUrl?: string; 
+     analysisResult?: VisionAnalysisResult; 
+  }
+}
+
+export interface UserMessage extends BaseAgentMessage {
+  role: 'user';
+  // User messages shouldn't have confidence or agentType
+}
+
+export type AgentMessage = UserMessage | AssistantMessage;
 
 export interface AlertItem {
   id: string;

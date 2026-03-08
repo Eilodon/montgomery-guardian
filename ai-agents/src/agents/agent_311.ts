@@ -1,8 +1,9 @@
 // ai-agents/src/agents/agent_311.ts
-import { queryRequestsTool } from '../tools/requests_tool';
+import { queryRequestsTool, ToolResponse } from '../tools/requests_tool';
 import { ragService } from '../rag';
+import { AgentInput } from '../types/agents';
 
-export async function agent311(ai: any, input: any): Promise<any> {
+export async function agent311(ai: any, input: AgentInput): Promise<any> {
   try {
     console.log('311 agent processing request:', { message: input.message });
 
@@ -33,14 +34,21 @@ export async function agent311(ai: any, input: any): Promise<any> {
     // Use tools to get relevant 311 data
     let requestData = null;
     try {
-      requestData = await queryRequestsTool({
+      const toolRes = await queryRequestsTool({
         service_type: extractServiceType(input.message) || undefined,
         status: extractStatus(input.message) || undefined,
         limit: 10,
         userLocation: input.userLocation
       });
+      if (toolRes.success) {
+        requestData = toolRes.data;
+      } else {
+        // Nhét thông báo lỗi của Tool vào context để LLM biết đường trả lời
+        ragContext += `\nLưu ý hệ thống: ${toolRes.message}`;
+      }
     } catch (toolError) {
       console.warn('311 tool failed:', toolError);
+      ragContext += '\nLưu ý hệ thống: Không thể truy cập dữ liệu yêu cầu 311 hiện tại.';
     }
 
     const { text } = await ai.generate({

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
 import { apiCall } from "@/lib/api";
@@ -18,30 +18,48 @@ export function WhatIfSimulator({
 
   // Use real ML simulation API from backend
   useEffect(() => {
+    // THỢ RÈN: Khởi tạo Vũ khí Hủy diệt Request (AbortController)
+    const abortController = new AbortController();
+
     const simulateImpact = async () => {
       setIsLoading(true);
       try {
         const result = await apiCall('/predictions/simulate', {
           method: 'POST',
-          body: JSON.stringify({ patrolCoverage, backlogLevel })
+          body: JSON.stringify({ patrolCoverage, backlogLevel }),
+          signal: abortController.signal // Gắn ngòi nổ vào Request
         });
+        
         setProjectedImpact(result.projectedImpact);
         setConfidence(result.confidenceScore);
-      } catch (error) {
-        console.error("Simulation failed, using fallback logic:", error);
-        // Fallback logic if API fails
-        const fallback = Math.round(
-          Math.max(0, Math.min(100, (patrolCoverage * 0.7) - (backlogLevel * 0.3) + 30))
-        );
-        setProjectedImpact(fallback);
+      } catch (error: any) {
+        // Nếu lỗi là do chúng ta chủ động hủy (Abort), bỏ qua im lặng.
+        if (error.name === 'AbortError' || error.message.includes('abort')) {
+          console.log('[NETWORK] Stale simulation request aborted.');
+          return; 
+        }
+        
+        console.error("[FATAL] ML Simulation failed:", error);
+        // THỢ RÈN: XÓA BỎ LÔ-GIC FALLBACK LỪA DỐI NGƯỜI DÙNG.
+        setProjectedImpact(0); 
+        setConfidence(0);
       } finally {
-        setIsLoading(false);
+        // Cần check tín hiệu abort để không set tắt Loading nhầm lúc request mới đang chạy
+        if (!abortController.signal.aborted) {
+            setIsLoading(false);
+        }
       }
     };
 
-    const debounce = setTimeout(simulateImpact, 300);
-    return () => clearTimeout(debounce);
-  }, [patrolCoverage, backlogLevel]);
+    // Debounce 300ms
+    const timer = setTimeout(simulateImpact, 300);
+
+    // Cleanup phase: Kích hoạt ngòi nổ hủy Request cũ và Xóa timer
+    return () => {
+      clearTimeout(timer);
+      abortController.abort();
+    };
+  }, [patrolCoverage, backlogLevel]); // Dependencies thép
 
   // Determine impact color based on value
   const getImpactColor = (impact: number): string => {

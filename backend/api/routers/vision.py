@@ -2,20 +2,17 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from typing import Optional
 from ..models.schemas import VisionResponse, VisionAnalysisResult, ServiceRequest311
+from ..core.config import settings
 from datetime import datetime
 import httpx
 import os
 import base64
 import io
-import sys
-
-# Add AI agents path
-sys.path.append(os.path.join(os.path.dirname(__file__), '../../../ai-agents'))
 
 router = APIRouter()
 
-# AI Agents service URL (would be deployed separately)
-AI_AGENTS_URL = os.getenv("AI_AGENTS_URL", "http://localhost:3001")
+# AI Agents service URL from config
+AI_AGENTS_URL = settings.ai_agents_url
 
 @router.post("/vision/analyze", response_model=VisionResponse)
 async def analyze_image(

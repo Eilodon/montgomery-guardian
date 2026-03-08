@@ -5,11 +5,10 @@ Wants=postgresql.service redis.service
 
 [Service]
 Type=simple
-User=www-data
-WorkingDirectory=/var/www/montgomery-guardian/backend
-Environment=PATH=/var/www/montgomery-guardian/backend/venv/bin:/usr/local/bin
-EnvironmentFile=/etc/montgomery.env
-ExecStart=/var/www/montgomery-guardian/backend/venv/bin/python -m etl.run_scheduler
+User=ubuntu
+WorkingDirectory=/media/ybao/DATA1/b1/montgomery-guardian/backend
+Environment=PATH=/media/ybao/DATA1/b1/montgomery-guardian/backend/venv/bin
+ExecStart=/media/ybao/DATA1/b1/montgomery-guardian/backend/venv/bin/python etl/run_scheduler.py
 Restart=always
 RestartSec=10
 StandardOutput=journal

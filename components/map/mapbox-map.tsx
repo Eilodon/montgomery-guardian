@@ -277,24 +277,43 @@ export function addCrimeHeatmapLayer(
   crimeData: any[],
   layerId: string = "crime-heatmap"
 ) {
-  if (!map.getSource(layerId)) {
-    map.addSource(layerId, {
-      type: "geojson",
-      data: {
-        type: "FeatureCollection",
-        features: crimeData.map((crime) => ({
+  // THỢ RÈN: Tuyệt đối không thao tác nếu style chưa load xong (Ngăn crash WebGL)
+  if (!map.isStyleLoaded()) {
+      map.once('styledata', () => addCrimeHeatmapLayer(map, crimeData, layerId));
+      return;
+  }
+
+  const sourceData = {
+      type: "FeatureCollection" as const,
+      features: crimeData.map((crime) => ({
           type: "Feature",
           properties: {
-            ...crime,
-            intensity: crime.riskLevel === "critical" ? 1 : crime.riskLevel === "high" ? 0.75 : crime.riskLevel === "medium" ? 0.5 : 0.25,
+              ...crime,
+              intensity: crime.riskLevel === "critical" ? 1 : crime.riskLevel === "high" ? 0.75 : crime.riskLevel === "medium" ? 0.5 : 0.25,
           },
           geometry: {
-            type: "Point",
-            coordinates: [crime.longitude, crime.latitude],
+              type: "Point",
+              coordinates: [crime.longitude, crime.latitude],
           },
-        })),
-      },
-    });
+      })),
+  };
+
+  const existingSource = map.getSource(layerId) as mapboxgl.GeoJSONSource;
+  
+  if (!existingSource) {
+      // Create new
+      map.addSource(layerId, { type: "geojson", data: sourceData });
+      map.addLayer({
+          id: `${layerId}-circles`,
+          type: "circle",
+          source: layerId,
+          // ... paint config
+      });
+  } else {
+      // THỢ RÈN: Cập nhật an toàn (không bị chớp giật)
+      existingSource.setData(sourceData);
+  }
+}
 
     map.addLayer(
       {

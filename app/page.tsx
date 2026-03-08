@@ -1,14 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import {
-  KPIDashboardGrid,
-  type KPIDashboardData,
-} from "@/components/dashboard";
-import { MapContainer, UnifiedMap } from "@/components/map";
-import { AlertFeed, type AlertItem } from "@/components/alerts";
-import { SplitViewAnalytics, SHAPFeatureImportance } from "@/components/analytics";
-import { SafetyScorecard, type DistrictData } from "@/components/scorecard";
+import dynamic from "next/dynamic";
+// Giữ lại các hook API, nhưng tách view
+
+// THỢ RÈN: Chunking các heavy components. SSR = false cho những thứ cần Browser API (Window)
+const MapContainer = dynamic(() => import("@/components/map").then(mod => mod.MapContainer), { ssr: false, loading: () => <div className="animate-pulse bg-slate-800 h-full w-full rounded-xl"/> });
+const UnifiedMap = dynamic(() => import("@/components/map").then(mod => mod.UnifiedMap), { ssr: false });
+const SafetyScorecard = dynamic(() => import("@/components/scorecard").then(mod => mod.SafetyScorecard), { ssr: false });
+const SHAPFeatureImportance = dynamic(() => import("@/components/analytics").then(mod => mod.SHAPFeatureImportance), { ssr: false });
+const KPIDashboardGrid = dynamic(() => import("@/components/dashboard").then(mod => mod.KPIDashboardGrid));
+const AlertFeed = dynamic(() => import("@/components/alerts").then(mod => mod.AlertFeed));
+
 import {
   useKPIData,
   useLiveAlerts,
@@ -35,7 +38,17 @@ export default function DemoPage() {
   const { requests: active311Requests, isLoading: requestsLoading } = useActive311Requests(activeView === "map");
   const { shapData, isLoading: shapLoading } = useSHAPExplainability(activeView === "analytics");
 
-  const isLoading = kpiLoading || alertsLoading || districtsLoading || predictionsLoading || heatmapLoading || requestsLoading || shapLoading;
+  const isLoadingMap = predictionsLoading || heatmapLoading || requestsLoading;
+  const isLoadingDashboard = kpiLoading || alertsLoading;
+  const isLoadingAnalytics = shapLoading;
+  const isLoadingScorecard = districtsLoading;
+
+  const isLoading = {
+    map: isLoadingMap,
+    dashboard: isLoadingDashboard,
+    analytics: isLoadingAnalytics,
+    scorecard: isLoadingScorecard,
+  }[activeView] ?? false;
 
   return (
     <div className="min-h-screen flex flex-col">

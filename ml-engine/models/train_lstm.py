@@ -17,9 +17,17 @@ import pickle
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Set device
-device = torch.device('cpu')
-logger.info(f"Using device: {device}")
+# THỢ RÈN: Auto-detect tối đa hóa sức mạnh phần cứng
+def get_device():
+    if torch.cuda.is_available():
+        return torch.device('cuda')
+    elif torch.backends.mps.is_available(): # Cho Apple Silicon (M1/M2/M3)
+        return torch.device('mps')
+    else:
+        return torch.device('cpu')
+
+device = get_device()
+logger.info(f"[HARDWARE] Allocated compute device: {device}")
 
 class CrimeTimeSeriesDataset(Dataset):
     """Dataset for crime time series data"""
@@ -338,7 +346,19 @@ def get_latest_sequences(crime_df: pd.DataFrame, scaler: MinMaxScaler, sequence_
     if len(daily_crime_counts) < sequence_length:
         logger.warning(f"Not enough historical data ({len(daily_crime_counts)} days). Using padding.")
         # Pad with zeros if not enough data
-        # ... logic for padding if needed ...
+        pad_size = sequence_length - len(daily_crime_counts)
+        # Create padding rows with zero crime counts
+        padding_dates = pd.date_range(
+            start=daily_crime_counts['date'].min() - pd.Timedelta(days=pad_size),
+            periods=pad_size,
+            freq='D'
+        )
+        padding_df = pd.DataFrame({
+            'date': padding_dates,
+            'crime_count': 0
+        })
+        daily_crime_counts = pd.concat([padding_df, daily_crime_counts], ignore_index=True)
+        daily_crime_counts = daily_crime_counts.sort_values('date')
     
     # Add features (same as in prepare_time_series_data)
     daily_crime_counts['day_of_week'] = daily_crime_counts['date'].dt.dayofweek
