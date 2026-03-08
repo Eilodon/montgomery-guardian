@@ -5,16 +5,36 @@ Provides retrieval-augmented generation capabilities
 """
 
 import os
+import sys
 import json
 import logging
+import threading
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from .knowledge_base import get_knowledge_base, MontgomeryKnowledgeBase
+# Guard: allow direct execution for debug
+if __name__ == "__main__":
+    _pkg_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    if _pkg_root not in sys.path:
+        sys.path.insert(0, _pkg_root)
+    from rag.knowledge_base import get_knowledge_base, MontgomeryKnowledgeBase
+else:
+    from .knowledge_base import get_knowledge_base, MontgomeryKnowledgeBase
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Global singleton state
+_rag_service: Optional['RAGService'] = None
+_rag_lock = threading.Lock()
+
+_STOP_WORDS = frozenset({
+    'how', 'do', 'i', 'a', 'an', 'the', 'is', 'are', 'was', 'were',
+    'what', 'where', 'when', 'why', 'can', 'to', 'in', 'of', 'for',
+    'me', 'my', 'on', 'at', 'by', 'be', 'it', 'or', 'and', 'if',
+    'about', 'this', 'that', 'with', 'from', 'will', 'should', 'could'
+})
 
 class RAGService:
     """RAG service for intelligent document retrieval and response generation"""
@@ -96,14 +116,8 @@ class RAGService:
         
         return enhanced
 
-    def _calculate_combined_score(
-        self,
-        similarity: float,
-        actionability: float,
-        freshness: float,
-        priority: str
-    ) -> float:
-        """Tính combined score từ pre-calculated values — không lookup từ dict."""
+    def _calculate_combined_score(self, similarity: float, actionability: float, freshness: float, priority: str) -> float:
+        """Tính combined score từ pre-calculated values."""
         priority_weights = {'high': 1.2, 'medium': 1.0, 'low': 0.8}
         weight = priority_weights.get(priority, 1.0)
 
@@ -116,44 +130,45 @@ class RAGService:
         return min(combined, 1.0)
     
     def get_context_for_query(self, query: str, max_context_length: int = 2000) -> str:
-        """Get formatted context for a query"""
+        """Get formatted context string for injection into LLM prompt."""
         try:
-            # Search for relevant documents
             search_results = self.search_knowledge(query, max_results=3)
-            
+
             if not search_results.get('results'):
                 return "No specific information found in the knowledge base."
-            
-            # Format context
+
             context_parts = []
             current_length = 0
-            
+
             for result in search_results['results']:
-                content = result.get('document', '')
-                metadata = result.get('metadata', {})
-                title = metadata.get('title', 'Unknown')
-                source = metadata.get('source', 'Unknown')
-                
-                # Format document
-                formatted_doc = f"""
-Document: {title}
-Source: {source}
-Content: {content}
-Relevance: {result.get('relevance_explanation', 'N/A')}
----
-"""
-                
-                # Check length limit
+                # Đọc đúng field — 'document' là canonical key sau enhancement
+                content = result.get('document') or result.get('content', '')
+                if not content:
+                    continue
+
+                metadata  = result.get('metadata', {})
+                title     = metadata.get('title',  'City Information')
+                source    = metadata.get('source', 'Official Source')
+                relevance = result.get('relevance_explanation', '')
+                score     = result.get('combined_score', 0)
+
+                formatted_doc = (
+                    f"[Source: {source} | Title: {title} | Score: {score:.2f}]\n"
+                    f"{content}\n"
+                    + (f"Relevance: {relevance}\n" if relevance else "")
+                    + "---\n"
+                )
+
                 if current_length + len(formatted_doc) > max_context_length:
                     break
-                
+
                 context_parts.append(formatted_doc)
                 current_length += len(formatted_doc)
-            
-            return ''.join(context_parts)
-            
+
+            return '\n'.join(context_parts) if context_parts else "No relevant context found."
+
         except Exception as e:
-            logger.error(f"Failed to get context: {e}")
+            logger.error(f"get_context_for_query failed: {e}")
             return "Error retrieving context from knowledge base."
     
     def add_knowledge(self, documents: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -190,127 +205,92 @@ Relevance: {result.get('relevance_explanation', 'N/A')}
                 'error': str(e)
             }
 
+    def _calculate_actionability(self, result: Dict[str, Any]) -> float:
+        """Calculate how actionable the information is."""
+        category = result.get('metadata', {}).get('category', 'general')
+        actionable_categories = {'emergency': 1.0, 'services': 0.8, 'safety': 0.6}
+        return actionable_categories.get(category, 0.4)
 
-# Global RAG service instance
-rag_service = None
+    def _calculate_freshness(self, result: Dict[str, Any]) -> float:
+        """Calculate data freshness."""
+        try:
+            created_at = result.get('metadata', {}).get('created_at', '')
+            if not created_at: return 0.5
+            dt = datetime.fromisoformat(created_at)
+            days_old = (datetime.now() - dt).days
+            return max(0.0, 1.0 - (days_old / 365.0))
+        except (ValueError, TypeError, AttributeError, OverflowError):
+            logger.debug(f"Could not parse created_at for freshness calculation")
+            return 0.5
+
+    def _explain_relevance(self, result: Dict[str, Any], query: str) -> str:
+        content     = result.get('document', result.get('content', '')).lower()
+        query_lower = query.lower()
+
+        meaningful_words = [
+            w for w in query_lower.split()
+            if w not in _STOP_WORDS and len(w) > 2
+        ]
+
+        matches = [word for word in meaningful_words if word in content]
+        if matches:
+            return f"Matches {len(matches)} key terms: {', '.join(matches[:4])}"
+
+        category = result.get('metadata', {}).get('category', '')
+        category_hints = {
+            'emergency': (['emergency', '911', 'urgent', 'help', 'immediate'], 'Emergency procedure match'),
+            'services':  (['service', 'report', 'request', '311', 'submit'],   'City service match'),
+            'safety':    (['safe', 'danger', 'crime', 'security', 'risk'],      'Safety information match'),
+        }
+
+        for cat, (keywords, label) in category_hints.items():
+            if category == cat and any(kw in query_lower for kw in keywords):
+                return label
+
+        score = result.get('similarity_score', 0)
+        return f"Semantic match (score: {score:.2f})"
+
 
 def get_rag_service() -> RAGService:
-    """Get or create the global RAG service instance"""
-    global rag_service
-    if rag_service is None:
-        rag_service = RAGService()
-    return rag_service
+    """Thread-safe singleton getter with double-checked locking."""
+    global _rag_service
+    if _rag_service is None:
+        with _rag_lock:
+            if _rag_service is None:
+                _rag_service = RAGService()
+    return _rag_service
 
 
-# API endpoints
+# API endpoints (simplified proxy to singleton)
 def handle_search_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Handle search requests from the API"""
-    try:
-        query = request_data.get('query', '')
-        category_filter = request_data.get('category_filter')
-        max_results = request_data.get('max_results', 5)
-        
-        if not query:
-            return {
-                'error': 'Query is required',
-                'timestamp': datetime.now().isoformat()
-            }
-        
-        service = get_rag_service()
-        return service.search_knowledge(query, category_filter, max_results)
-        
-    except Exception as e:
-        logger.error(f"Search request failed: {e}")
-        return {
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }
-
+    return get_rag_service().search_knowledge(
+        request_data.get('query', ''),
+        request_data.get('category_filter'),
+        request_data.get('max_results', 5)
+    )
 
 def handle_context_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Handle context requests for AI generation"""
-    try:
-        query = request_data.get('query', '')
-        max_length = request_data.get('max_length', 2000)
-        
-        if not query:
-            return {
-                'error': 'Query is required',
-                'timestamp': datetime.now().isoformat()
-            }
-        
-        service = get_rag_service()
-        context = service.get_context_for_query(query, max_length)
-        
-        return {
-            'query': query,
-            'context': context,
-            'timestamp': datetime.now().isoformat()
-        }
-        
-    except Exception as e:
-        logger.error(f"Context request failed: {e}")
-        return {
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }
-
+    return {
+        'query': request_data.get('query', ''),
+        'context': get_rag_service().get_context_for_query(
+            request_data.get('query', ''),
+            request_data.get('max_length', 2000)
+        ),
+        'timestamp': datetime.now().isoformat()
+    }
 
 def handle_add_knowledge_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Handle add knowledge requests"""
-    try:
-        documents = request_data.get('documents', [])
-        
-        if not documents:
-            return {
-                'error': 'Documents are required',
-                'timestamp': datetime.now().isoformat()
-            }
-        
-        service = get_rag_service()
-        return service.add_knowledge(documents)
-        
-    except Exception as e:
-        logger.error(f"Add knowledge request failed: {e}")
-        return {
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }
-
+    return get_rag_service().add_knowledge(request_data.get('documents', []))
 
 def handle_stats_request() -> Dict[str, Any]:
-    """Handle statistics requests"""
-    try:
-        service = get_rag_service()
-        return service.get_knowledge_stats()
-    except Exception as e:
-        logger.error(f"Stats request failed: {e}")
-        return {
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }
+    return get_rag_service().get_knowledge_stats()
 
 
 if __name__ == "__main__":
-    # Test the RAG service
-    service = RAGService()
-    
-    # Test search
-    test_queries = [
-        "How do I report a pothole?",
-        "What should I do in an emergency?",
-        "Is downtown safe at night?"
-    ]
-    
-    for query in test_queries:
-        print(f"\n=== Testing Query: {query} ===")
-        results = service.search_knowledge(query)
-        print(f"Results: {json.dumps(results, indent=2)}")
-        
-        # Test context generation
-        context = service.get_context_for_query(query)
-        print(f"Context: {context[:500]}...")
-    
-    # Test stats
-    stats = service.get_knowledge_stats()
-    print(f"\nKnowledge Base Stats: {json.dumps(stats, indent=2)}")
+    service = get_rag_service()
+    test_query = "How do I report a pothole?"
+    print(f"Testing Query: {test_query}")
+    results = service.search_knowledge(test_query)
+    print(f"Top Result Relevance: {results['results'][0]['relevance_explanation']}")
+    context = service.get_context_for_query(test_query)
+    print(f"Context Sample: {context[:200]}...")

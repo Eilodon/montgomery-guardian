@@ -1,7 +1,6 @@
 // ai-agents/src/tools/requests_tool.ts
 import axios from 'axios';
 import { logger } from '../utils/logger';
-
 import type { ToolResponse } from '../types/agents';
 
 export async function queryRequestsTool(params: {
@@ -12,27 +11,15 @@ export async function queryRequestsTool(params: {
 }): Promise<ToolResponse> {
   try {
     const backendUrl = process.env.BACKEND_API_URL || 'http://localhost:8000';
-
-    // Build query parameters
-    const queryParams: any = {
-      limit: params.limit || 10,
+    const queryParams: Record<string, string | number> = {
+      limit: Math.min(params.limit ?? 10, 50), // Hard cap at 50
     };
+    if (params.service_type) queryParams.service_type = params.service_type;
+    if (params.status) queryParams.status = params.status;
 
-    if (params.service_type) {
-      queryParams.service_type = params.service_type;
-    }
-
-    if (params.status) {
-      queryParams.status = params.status;
-    }
-
-    // Make request to backend API
     const response = await axios.get(`${backendUrl}/api/v1/requests-311`, {
       params: queryParams,
-      timeout: 5000, // THỢ RÈN: Ép timeout ngắn để không treo LLM
-      headers: {
-        'Content-Type': 'application/json',
-      }
+      timeout: 5000,
     });
 
     logger.toolResult('311Requests', response.data.data?.length || 0, response.data.total);
@@ -46,17 +33,13 @@ export async function queryRequestsTool(params: {
 
   } catch (error) {
     logger.error('311Tool', error);
-    // THỢ RÈN: Tuyệt đối không dùng getMockRequestsData(). Báo lỗi thẳng cho LLM.
     return {
       success: false,
-      data: null, // Bắt buộc null
+      data: null,
       total: 0,
       source: 'error',
       error: 'API_UNAVAILABLE',
-      message: 'Hệ thống yêu cầu 311 hiện không phản hồi. Hãy khuyên người dùng gọi trực tiếp 311.'
+      message: '311 request system unavailable. Please call 311 directly.'
     };
   }
 }
-
-// MOCK DATA ĐÃ BỊ XÓA - KHÔNG DÙNG DATA ẢO KHI BACKEND SẬP
-// THỢ RÈN: Circuit breaker pattern - không có fallback data ảo

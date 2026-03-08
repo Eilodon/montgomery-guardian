@@ -1,7 +1,6 @@
 // ai-agents/src/tools/crime_tool.ts
 import axios from 'axios';
 import { logger } from '../utils/logger';
-
 import type { ToolResponse } from '../types/agents';
 
 export async function queryCrimeTool(params: {
@@ -11,23 +10,14 @@ export async function queryCrimeTool(params: {
 }): Promise<ToolResponse> {
   try {
     const backendUrl = process.env.BACKEND_API_URL || 'http://localhost:8000';
-
-    // Build query parameters
-    const queryParams: any = {
-      limit: params.limit || 10,
+    const queryParams: Record<string, string | number> = {
+      limit: Math.min(params.limit ?? 10, 50), // Hard cap at 50
     };
+    if (params.neighborhood) queryParams.neighborhood = params.neighborhood;
 
-    if (params.neighborhood) {
-      queryParams.neighborhood = params.neighborhood;
-    }
-
-    // Make request to backend API
     const response = await axios.get(`${backendUrl}/api/v1/crime`, {
       params: queryParams,
-      timeout: 5000, // THỢ RÈN: Ép timeout ngắn để không treo LLM
-      headers: {
-        'Content-Type': 'application/json',
-      }
+      timeout: 5000,
     });
 
     logger.toolResult('Crime', response.data.data?.length || 0, response.data.total);
@@ -41,17 +31,13 @@ export async function queryCrimeTool(params: {
 
   } catch (error) {
     logger.error('CrimeTool', error);
-    // THỢ RÈN: Tuyệt đối không dùng getMockCrimeData(). Báo lỗi thẳng cho LLM.
     return {
       success: false,
-      data: null, // Bắt buộc null
+      data: null,
       total: 0,
       source: 'error',
       error: 'API_UNAVAILABLE',
-      message: 'Hệ thống cơ sở dữ liệu tội phạm hiện không phản hồi. Hãy khuyên người dùng thông cảm và gọi trực tiếp cho cảnh sát.'
+      message: 'Crime database is currently unavailable. Please contact MPD directly at (334) 625-2531.'
     };
   }
 }
-
-// MOCK DATA ĐÃ BỊ XÓA - KHÔNG DÙNG DATA ẢO KHI BACKEND SẬP
-// THỢ RÈN: Circuit breaker pattern - không có fallback data ảo

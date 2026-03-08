@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const BACKEND_URL = process.env.API_URL || 'http://localhost:8001';
-const API_KEY = process.env.API_KEY as string;
+const BACKEND_URL = process.env.API_URL || 'http://localhost:8000';
+const API_KEY = process.env.API_KEY;
 
-if (!API_KEY) {
-    throw new Error('API_KEY is not set in environment variables');
+// Runtime check instead of build-time check
+function validateApiKey() {
+    if (!API_KEY) {
+        console.warn('⚠️ API_KEY not set in environment variables - using proxy without authentication');
+    }
 }
 
 const ALLOWED_PATHS = [
@@ -35,8 +38,8 @@ async function proxyRequest(request: NextRequest, pathArray: string[], method: s
 
   try {
     const headers = new Headers(request.headers);
-    // Only add API key if not using demo API (port 8001)
-    if (!BACKEND_URL.includes('8001')) {
+    // Only add API key if not using demo API (port 8001) and API_KEY exists
+    if (!BACKEND_URL.includes('8001') && API_KEY) {
       headers.set('X-API-Key', API_KEY);
     }
     headers.delete('host');
