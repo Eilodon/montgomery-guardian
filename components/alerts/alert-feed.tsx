@@ -6,11 +6,12 @@ import { AlertItemCard } from "./alert-item-card";
 import { AlertSkeleton } from "./alert-skeleton";
 import type { AlertFeedProps } from "./types";
 
+const FIVE_MINUTES_MS = 5 * 60 * 1000;
+function isAlertNew(timestamp: string): boolean {
+  return new Date(timestamp).getTime() > Date.now() - FIVE_MINUTES_MS;
+}
+
 export function AlertFeed({ alerts, isLoading }: AlertFeedProps) {
-  const isNew = (timestamp: string): boolean => {
-    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
-    return new Date(timestamp).getTime() > fiveMinutesAgo;
-  };
 
   // Loading state
   if (isLoading) {
@@ -38,18 +39,12 @@ export function AlertFeed({ alerts, isLoading }: AlertFeedProps) {
         {alerts.map((alert, index) => (
           <div
             key={alert.id}
-            className={cn(
-              "animate-slide-in-top",
-              // Stagger animation delay based on index
-              index === 0 && "animation-delay-0",
-              index === 1 && "animation-delay-75",
-              index === 2 && "animation-delay-150"
-            )}
+            className="animate-slide-in-top"
             style={{
               animationDelay: `${index * 50}ms`,
             }}
           >
-            <AlertItemCard alert={alert} isNew={isNew(alert.timestamp)} />
+            <AlertItemCard alert={alert} isNew={isAlertNew(alert.timestamp)} />
           </div>
         ))}
       </div>

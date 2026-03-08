@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Camera, Upload, X, AlertCircle } from "lucide-react";
 
 interface CameraUploadProps {
@@ -22,15 +22,37 @@ export function CameraUpload({ onImageCapture, isProcessing = false }: CameraUpl
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isMobile, setIsMobile] = useState(false);
-  
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const currentObjectUrlRef = useRef<string | null>(null);
+
+  // Helper để revoke URL cũ trước khi tạo mới:
+  const createTrackedObjectUrl = useCallback((blob: Blob | File): string => {
+    if (currentObjectUrlRef.current) {
+      URL.revokeObjectURL(currentObjectUrlRef.current);
+    }
+    const url = URL.createObjectURL(blob);
+    currentObjectUrlRef.current = url;
+    return url;
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      // Revoke URL khi component unmount (user navigate away)
+      if (currentObjectUrlRef.current) {
+        URL.revokeObjectURL(currentObjectUrlRef.current);
+      }
+    };
+  }, []);
 
   // Detect mobile device
-  useState(() => {
-    setIsMobile(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
-  });
+  useEffect(() => {
+    setIsMobile(
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    );
+  }, []); // chỉ chạy một lần sau mount
 
   const startCamera = useCallback(async () => {
     try {
@@ -42,10 +64,10 @@ export function CameraUpload({ onImageCapture, isProcessing = false }: CameraUpl
           height: { ideal: 1080 }
         }
       });
-      
+
       setStream(mediaStream);
       setIsCameraActive(true);
-      
+
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
       }
@@ -74,44 +96,44 @@ export function CameraUpload({ onImageCapture, isProcessing = false }: CameraUpl
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     context.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
+
     // THỢ RÈN: Dùng toBlob thay vì toDataURL.
     canvas.toBlob((blob) => {
-        if (!blob) {
-            setError("Lỗi xử lý luồng ảnh.");
-            return;
-        }
+      if (!blob) {
+        setError("Lỗi xử lý luồng ảnh.");
+        return;
+      }
 
-        // Tạo tham chiếu bộ nhớ cực nhẹ
-        const objectUrl = URL.createObjectURL(blob);
+      // Tạo tham chiếu bộ nhớ cực nhẹ
+      const objectUrl = createTrackedObjectUrl(blob);
 
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                const metadata: ImageMetadata = {
-                    timestamp: new Date().toISOString(),
-                    location: {
-                        latitude: position.coords.latitude,
-                        longitude: position.coords.longitude
-                    },
-                    deviceInfo: navigator.userAgent
-                };
-                
-                // Truyền objectUrl lên UI, kèm theo Blob thật (nếu API cần File upload sau này)
-                onImageCapture(objectUrl, metadata);
-                stopCamera();
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const metadata: ImageMetadata = {
+            timestamp: new Date().toISOString(),
+            location: {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude
             },
-            (error) => {
-                const metadata: ImageMetadata = {
-                    timestamp: new Date().toISOString(),
-                    deviceInfo: navigator.userAgent
-                };
-                onImageCapture(objectUrl, metadata);
-                stopCamera();
-            },
-            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-        );
+            deviceInfo: navigator.userAgent
+          };
+
+          // Truyền objectUrl lên UI, kèm theo Blob thật (nếu API cần File upload sau này)
+          onImageCapture(objectUrl, metadata);
+          stopCamera();
+        },
+        (error) => {
+          const metadata: ImageMetadata = {
+            timestamp: new Date().toISOString(),
+            deviceInfo: navigator.userAgent
+          };
+          onImageCapture(objectUrl, metadata);
+          stopCamera();
+        },
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+      );
     }, "image/jpeg", 0.85); // Nén JPEG 85% trực tiếp ở Native Layer
-}, [onImageCapture, stopCamera]);
+  }, [onImageCapture, stopCamera]);
 
   const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -130,13 +152,13 @@ export function CameraUpload({ onImageCapture, isProcessing = false }: CameraUpl
     }
 
     // THỢ RÈN: Dùng ObjectURL thay vì Base64 để tiết kiệm RAM
-    const objectUrl = URL.createObjectURL(file);
-    
+    const objectUrl = createTrackedObjectUrl(file);
+
     const metadata: ImageMetadata = {
       timestamp: new Date().toISOString(),
       deviceInfo: `Upload: ${file.type}, ${Math.round(file.size / 1024)}KB`
     };
-    
+
     onImageCapture(objectUrl, metadata);
   }, [onImageCapture]);
 
@@ -164,7 +186,7 @@ export function CameraUpload({ onImageCapture, isProcessing = false }: CameraUpl
             muted
             className="w-full h-auto"
           />
-          
+
           {/* Camera Controls */}
           <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/70 to-transparent">
             <div className="flex justify-center gap-4">
@@ -175,7 +197,7 @@ export function CameraUpload({ onImageCapture, isProcessing = false }: CameraUpl
               >
                 {isProcessing ? "Processing..." : "📸 Capture"}
               </button>
-              
+
               <button
                 onClick={stopCamera}
                 disabled={isProcessing}

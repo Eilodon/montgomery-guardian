@@ -5,9 +5,11 @@ import { safetyAgent } from './safety_agent';
 import { agent311 } from './agent_311';
 import { webAgent } from './web_agent';
 import { scrutinizePrompt, scrutinizeOutput } from './guardian';
+import { preFilterMessage } from '../utils/security_filter';
+import { logger } from '../utils/logger';
 
 // Initialize Genkit with Google AI plugin
-const ai = genkit({
+export const ai = genkit({
   plugins: [googleAI({ apiKey: process.env.GEMINI_API_KEY })],
   model: 'googleai/gemini-flash-latest',
 });
@@ -79,32 +81,51 @@ export const orchestratorFlow = ai.defineFlow(
   },
   async (input) => {
     try {
-      console.log('Orchestrator processing message:', {
-        message: input.message,
-        language: input.language
-      });
+      logger.agentStart('Orchestrator', input.message.length, !!input.userLocation);
 
-      // THỢ RÈN: Chạy song song kiểm tra an toàn và phân loại ý định (Concurrent execution)
-      const [safetyCheck, intentResult] = await Promise.all([
-        scrutinizePrompt(ai, input.message),
-        classifyIntent(input.message).catch(() => ({ agentType: 'general', confidence: 0 }))
-      ]);
-
-      // Nếu prompt độc hại hoặc Guardian sập, ngắt mạch ngay lập tức
-      if (!safetyCheck.safe) {
+      // ═══ TIER 0: Rule-based filter (0ms, 0 LLM cost) ═══
+      const preFilter = preFilterMessage(input.message);
+      if (preFilter.blocked) {
         return {
-          content: `Safety Alert: ${safetyCheck.reason || 'Yêu cầu vi phạm giao thức an toàn hoặc hệ thống an ninh đang bảo trì.'}`,
+          content: 'I\'m unable to process this request.',
           agentType: 'guardian',
           timestamp: new Date().toISOString(),
-          metadata: { safetyViolation: true }
+          metadata: { safetyViolation: true, tier: 'rule_based' }
         };
       }
 
-      const { agentType, confidence } = intentResult;
+      // ═══ TIER 1: LLM Guardian — chỉ khi cần thiết ═══
+      let safetyCheck: { safe: boolean; reason?: string } = { safe: true };
+      if (preFilter.tier === 'llm_required') {
+        safetyCheck = await scrutinizePrompt(ai, input.message);
+        if (!safetyCheck.safe) {
+          return {
+            content: `Unable to process: ${safetyCheck.reason || 'Safety policy violation.'}`,
+            agentType: 'guardian',
+            timestamp: new Date().toISOString(),
+            metadata: { safetyViolation: true, tier: 'llm_guardian' }
+          };
+        }
+      }
 
-      console.log('Intent classified:', { agentType, confidence });
+      // ═══ GATE 2: Chỉ sau khi Guardian pass mới classify ═══
+      const intentResult = await classifyIntent(input.message)
+        .catch(() => ({ agentType: 'general' as const, confidence: 0 }));
 
-      // 2. Route to correct agent
+      const ROUTING_CONFIG = {
+        CONFIDENCE_THRESHOLD: 0.6,
+        // Nếu confidence thấp, fallback về general thay vì route sai
+        FALLBACK_AGENT: 'general' as const,
+      } as const;
+
+      const { agentType: rawAgentType, confidence } = intentResult;
+      const agentType = confidence >= ROUTING_CONFIG.CONFIDENCE_THRESHOLD
+        ? rawAgentType
+        : ROUTING_CONFIG.FALLBACK_AGENT;
+
+      logger.orchestratorRoute(agentType, confidence);
+
+      // ═══ GATE 3: Route tới agent tương ứng ═══
       let response;
       switch (agentType) {
         case 'safety_intel':
@@ -121,14 +142,18 @@ export const orchestratorFlow = ai.defineFlow(
       }
 
       // 2.5 Safety Scrutiny (Output)
-      if (response.content) {
+      if (response && response.content) {
         const outputCheck = await scrutinizeOutput(ai, response.content, agentType);
         response.content = outputCheck.content;
       }
 
       // 3. Translate if needed
       if (input.language !== 'en' && response.content) {
-        response.content = await translateResponse(ai, response.content, input.language);
+        const translated = await translateResponse(ai, response.content, input.language);
+
+        // Re-scrutinize translated content — CHẶN biến chất khi dịch
+        const translationCheck = await scrutinizeOutput(ai, translated, `${agentType}_translated`);
+        response.content = translationCheck.content;
       }
 
       // 4. Add metadata
@@ -144,14 +169,14 @@ export const orchestratorFlow = ai.defineFlow(
         }
       };
 
-      console.log('Orchestrator response generated:', {
+      logger.info('Orchestrator', {
         agentType: result.agentType,
         contentLength: result.content?.length || 0
       });
 
       return result;
     } catch (error) {
-      console.error('Orchestrator flow error:', error);
+      logger.error('OrchestratorFlow', error);
 
       // Fallback response
       return {
@@ -185,12 +210,7 @@ Guidelines:
       metadata: { source: 'general_llm' }
     };
   } catch (error: any) {
-    console.error('General response failed:', {
-      message: error.message,
-      status: error.status,
-      details: error.details,
-      stack: error.stack
-    });
+    logger.error('GeneralResponse', error);
     return {
       content: 'I\'m here to help with questions about Montgomery, Alabama. Could you please rephrase your question?',
       agentType: 'general',
@@ -213,7 +233,7 @@ async function translateResponse(ai: any, content: string, language: string): Pr
 
     return text || content; // Fallback to original if translation fails
   } catch (error) {
-    console.error('Translation failed:', error);
+    logger.error('Translation', error);
     return content; // Return original content if translation fails
   }
 }

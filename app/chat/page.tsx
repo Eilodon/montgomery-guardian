@@ -68,43 +68,46 @@ export default function ChatPage() {
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const currentInput = input; // capture trước khi clear
     setInput("");
     setIsLoading(true);
 
+    // AbortController để tránh memory leak nếu component unmount
+    const controller = new AbortController();
+
     try {
-      // API call to backend
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/chat`, {
+      const response = await fetch('/api/proxy/chat', { // ← proxy, không phải NEXT_PUBLIC
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: input,
+          message: currentInput,
           history: messages,
           language: language.toLowerCase(),
         }),
+        signal: controller.signal,
       });
 
-      if (!response.ok) throw new Error('Failed to send message');
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const assistantMessage: Message = await response.json();
       setMessages(prev => [...prev, assistantMessage]);
     } catch (error) {
-      // Fallback response for demo
+      if ((error as Error).name === 'AbortError') return; // unmount, không làm gì
+
       const fallbackMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `I understand you're asking about: "${input}". This is a demo response. The actual AI integration will be available once the backend is deployed.`,
+        content: `Không thể kết nối đến server. Vui lòng thử lại sau.`,
         agentType: 'safety_intel',
         timestamp: new Date().toISOString(),
-        metadata: {
-          safetyScore: 'B',
-        },
       };
       setMessages(prev => [...prev, fallbackMessage]);
     } finally {
       setIsLoading(false);
     }
+
+    // Cleanup: trả về cleanup function nếu dùng trong useEffect
+    // Ở đây không cần vì handleSend không phải effect
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -131,7 +134,7 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="flex h-screen bg-white">
+    <div className="theme-light flex h-screen" style={{ backgroundColor: 'var(--color-background)', color: 'var(--color-foreground)' }}>
       {/* Mobile Sidebar Overlay */}
       {sidebarOpen && (
         <div 
@@ -142,20 +145,25 @@ export default function ChatPage() {
 
       {/* Left Sidebar */}
       <aside className={`
-        fixed lg:static inset-y-0 left-0 z-50 w-72 bg-white border-r border-gray-200
+        fixed lg:static inset-y-0 left-0 z-50 w-72 border-r
         transform transition-transform duration-300 ease-in-out
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-      `}>
+      `}
+      style={{ 
+        backgroundColor: 'var(--color-background)', 
+        borderColor: 'var(--color-border)',
+        color: 'var(--color-foreground)'
+      }}>
         <div className="flex flex-col h-full">
           {/* Sidebar Header */}
-          <div className="flex items-center justify-between p-6 border-b border-gray-200">
+          <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: 'var(--color-border)' }}>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'var(--color-accent)' }}>
                 <Shield className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="font-bold text-gray-900">Montgomery Guardian</h1>
-                <p className="text-xs text-gray-500">Safety Companion</p>
+                <h1 className="font-bold" style={{ color: 'var(--color-foreground)' }}>Montgomery Guardian</h1>
+                <p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>Safety Companion</p>
               </div>
             </div>
             <button

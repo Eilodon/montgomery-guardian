@@ -2,18 +2,10 @@
 
 import { cn } from "@/lib/utils";
 import type { FeatureImportanceChartProps, FeatureImportanceItem } from "./types";
-
-// Default feature importance data
-const defaultFeatures: FeatureImportanceItem[] = [
-  { name: "Weekend", value: 0.85, color: "#EF4444" },
-  { name: "Temperature", value: 0.72, color: "#F59E0B" },
-  { name: "311 Backlog", value: 0.65, color: "#3B82F6" },
-  { name: "Hour of Day", value: 0.58, color: "#22C55E" },
-  { name: "Neighborhood History", value: 0.91, color: "#8B5CF6" },
-];
+import { DEFAULT_FEATURE_IMPORTANCE } from "./types";
 
 export function FeatureImportanceChart({
-  features = defaultFeatures,
+  features = DEFAULT_FEATURE_IMPORTANCE,
   title = "Why is this area HIGH risk?",
 }: FeatureImportanceChartProps) {
   // Sort features by value descending for better visualization

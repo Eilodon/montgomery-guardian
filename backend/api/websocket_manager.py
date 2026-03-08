@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Dict, Any, Set
 from fastapi import WebSocket, WebSocketDisconnect
 from .core.redis import redis_client
+from .core.config import settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -17,7 +18,7 @@ class ConnectionManager:
         self.rooms: Dict[str, Set[str]] = {}
 
     async def connect(self, websocket: WebSocket, connection_id: str, metadata: Dict = None):
-        await websocket.accept()
+        # Note: websocket should be already accepted by the endpoint
         self.active_connections[connection_id] = websocket
         self.connection_metadata[connection_id] = metadata or {}
         await self.join_room(connection_id, "general")
@@ -175,10 +176,21 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 # FastAPI WebSocket endpoint
-async def websocket_endpoint(websocket: WebSocket, x_api_key: str = None):
-    # Lấy key từ query param ?x_api_key=...
-    if not x_api_key or x_api_key != settings.api_key:
-        await websocket.close(code=4001, reason="Invalid API key")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    
+    try:
+        # Expect first message to be {"type": "auth", "key": "..."}
+        auth_msg = await asyncio.wait_for(websocket.receive_json(), timeout=5.0)
+        if auth_msg.get("type") != "auth" or auth_msg.get("key") != settings.api_key:
+            await websocket.close(code=4001, reason="Unauthorized")
+            return
+    except asyncio.TimeoutError:
+        await websocket.close(code=4002, reason="Auth timeout")
+        return
+    except Exception as e:
+        logger.error(f"WebSocket auth error: {e}")
+        await websocket.close(code=4003, reason="Auth failed")
         return
 
     connection_id = f"conn_{len(manager.active_connections)}_{datetime.now().timestamp()}"

@@ -11,7 +11,10 @@ router = APIRouter()
 
 class ChatRequest(BaseModel):
     message: str
-    agent_type: Optional[str] = None  # Let system auto-detect if not specified
+    history: list[dict] = []
+    language: str = "en"
+    agent_type: Optional[str] = None
+    userLocation: Optional[dict] = None
     context: Optional[dict] = None
 
 # AI Agents service URL from config
@@ -30,7 +33,10 @@ async def chat_with_agent(request: ChatRequest):
         # Prepare payload for AI agents service
         payload = {
             "message": request.message,
+            "history": request.history,
+            "language": request.language,
             "agent_type": agent_type,
+            "user_location": request.userLocation,
             "context": request.context or {},
             "timestamp": datetime.now().isoformat()
         }

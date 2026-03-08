@@ -8,8 +8,10 @@ import { AlertsSidebar } from "./alerts-sidebar";
 import { AnalyticsPanel } from "./analytics-panel";
 import { UnifiedMap } from "./unified-map";
 import { MapboxMap } from "./mapbox-map";
+import { CrimeHeatmap } from "./crime-heatmap";
 import type { MapContainerProps, MapLayerType, RiskZone, Alert } from "./types";
-import { useHeatmapData, useActive311Requests, useLiveAlerts } from "@/lib/api";
+import { useHeatmapData, useActive311Requests, useLiveAlerts, useRiskZoneData } from "@/lib/api";
+import { MapDataProvider } from "./map-data-context";
 
 // Default risk zone data
 const defaultRiskZones: RiskZone[] = [
@@ -80,11 +82,13 @@ export function MapContainer({
   const [activeLayer, setActiveLayer] = useState<MapLayerType>(defaultLayer);
   const [alertsOpen, setAlertsOpen] = useState(true);
   const [analyticsOpen, setAnalyticsOpen] = useState(true);
+  const [timeRange, setTimeRange] = useState<"24h" | "7d" | "30d">("24h");
 
   // Use real API data
   const { heatmapData } = useHeatmapData();
   const { requests: active311Requests } = useActive311Requests();
   const { alerts: liveAlerts } = useLiveAlerts();
+  const { riskZones: liveRiskZones } = useRiskZoneData();
 
   return (
     <div
@@ -94,41 +98,25 @@ export function MapContainer({
       )}
     >
       {/* Main Map Content Area */}
-      <div className="absolute inset-0 pb-[60px]">
-        {activeLayer === "unified" && children ? (
-          React.Children.map(children, (child) => {
-            if (React.isValidElement(child)) {
-              return React.cloneElement(child as any, {
-                crimeData: (heatmapData as any)?.data || [],
-                requests311: (active311Requests as any)?.data || []
-              });
-            }
-            return child;
-          })
-        ) : activeLayer === "crime" ? (
-          <MapboxMap
-            crimeData={(heatmapData as any)?.data || []}
-            showHeatmap={true}
-            show311Points={false}
-          />
-        ) : activeLayer === "311" ? (
-          <MapboxMap
-            requests311={(active311Requests as any)?.data || []}
-            showHeatmap={false}
-            show311Points={true}
-          />
-        ) : (
-          children ? React.Children.map(children, (child) => {
-            if (React.isValidElement(child)) {
-              return React.cloneElement(child as any, {
-                crimeData: (heatmapData as any)?.data || [],
-                requests311: (active311Requests as any)?.data || []
-              });
-            }
-            return child;
-          }) : <MapboxMap crimeData={(heatmapData as any)?.data || []} />
-        )}
-      </div>
+      <MapDataProvider
+        crimeData={(heatmapData as any)?.data ?? []}
+        requests311={(active311Requests as any)?.data ?? []}
+      >
+        <div className="absolute inset-0 pb-[60px]">
+          {activeLayer === "crime" && (
+            <CrimeHeatmap
+              timeRange={timeRange}
+              onTimeRangeChange={setTimeRange}
+            />
+          )}
+          {activeLayer === "311" && (
+            <MapboxMap showHeatmap={false} show311Points />
+          )}
+          {(activeLayer === "unified" || !children) && (
+            children ?? <MapboxMap />
+          )}
+        </div>
+      </MapDataProvider>
 
       {/* Layer Toggle Controls */}
       <LayerToggle activeLayer={activeLayer} onLayerChange={setActiveLayer} />
@@ -159,7 +147,7 @@ export function MapContainer({
       )}
 
       {/* Bottom Ribbon - Risk Zones */}
-      <RiskZoneRibbon zones={riskZones} />
+      <RiskZoneRibbon zones={liveRiskZones.length > 0 ? liveRiskZones : riskZones} />
     </div>
   );
 }

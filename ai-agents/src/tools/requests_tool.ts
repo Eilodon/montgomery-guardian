@@ -1,15 +1,8 @@
 // ai-agents/src/tools/requests_tool.ts
 import axios from 'axios';
+import { logger } from '../utils/logger';
 
-// Thêm Type cho Response để LLM không bị ảo giác
-export interface ToolResponse {
-  success: boolean;
-  data: any[] | null;
-  total: number;
-  source: string;
-  error?: string;
-  message?: string;
-}
+import type { ToolResponse } from '../types/agents';
 
 export async function queryRequestsTool(params: {
   service_type?: string;
@@ -19,20 +12,20 @@ export async function queryRequestsTool(params: {
 }): Promise<ToolResponse> {
   try {
     const backendUrl = process.env.BACKEND_API_URL || 'http://localhost:8000';
-    
+
     // Build query parameters
     const queryParams: any = {
       limit: params.limit || 10,
     };
-    
+
     if (params.service_type) {
       queryParams.service_type = params.service_type;
     }
-    
+
     if (params.status) {
       queryParams.status = params.status;
     }
-    
+
     // Make request to backend API
     const response = await axios.get(`${backendUrl}/api/v1/requests-311`, {
       params: queryParams,
@@ -41,21 +34,18 @@ export async function queryRequestsTool(params: {
         'Content-Type': 'application/json',
       }
     });
-    
-    console.log('311 requests tool response:', { 
-      dataCount: response.data.data?.length || 0,
-      total: response.data.total 
-    });
-    
-    return { 
-      success: true, 
-      data: response.data.data || [], 
-      total: response.data.total || 0, 
-      source: 'backend_api' 
+
+    logger.toolResult('311Requests', response.data.data?.length || 0, response.data.total);
+
+    return {
+      success: true,
+      data: response.data.data || [],
+      total: response.data.total || 0,
+      source: 'backend_api'
     };
-    
+
   } catch (error) {
-    console.error('[CIRCUIT BREAKER] 311 requests tool failed:', error);
+    logger.error('311Tool', error);
     // THỢ RÈN: Tuyệt đối không dùng getMockRequestsData(). Báo lỗi thẳng cho LLM.
     return {
       success: false,

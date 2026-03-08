@@ -6,6 +6,7 @@ export { LayerToggle } from "./layer-toggle";
 export { RiskZoneRibbon } from "./risk-zone-ribbon";
 export { AlertsSidebar } from "./alerts-sidebar";
 export { AnalyticsPanel } from "./analytics-panel";
+export { CrimeHeatmap } from "./crime-heatmap";
 
 // Types
 export type {

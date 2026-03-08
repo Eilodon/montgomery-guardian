@@ -1,6 +1,5 @@
-# backend/api/core/config.py
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, field_validator
 from typing import Optional
 
 class Settings(BaseSettings):
@@ -23,8 +22,15 @@ class Settings(BaseSettings):
     arcgis_api_timeout: int = 30
     
     # Security - BẮT BUỘC phải có trong .env
-    api_key: str = Field(..., env="API_KEY") # Không còn default nữa!
+    api_key: str = Field(..., validation_alias="API_KEY") # Không còn default nữa!
     allowed_origins: list[str] = ["http://localhost:3000", "http://localhost:8000"]
+
+    @field_validator('api_key')
+    @classmethod
+    def api_key_must_be_strong(cls, v: str) -> str:
+        if len(v) < 32:
+            raise ValueError("API_KEY must be at least 32 characters for production-grade entropy")
+        return v
     
     # ETL Settings
     etl_interval_minutes: int = 60
@@ -37,9 +43,10 @@ class Settings(BaseSettings):
     # AI Agents Service
     ai_agents_url: str = "http://localhost:3001"
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
-        extra = "ignore"   # tránh lỗi khi thêm biến mới
+    model_config = {
+        "env_file": ".env",
+        "case_sensitive": False,
+        "extra": "ignore", # tránh lỗi khi thêm biến mới
+    }
 
 settings = Settings()

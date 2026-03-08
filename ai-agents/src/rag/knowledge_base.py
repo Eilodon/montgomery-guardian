@@ -57,7 +57,7 @@ class MontgomeryKnowledgeBase:
         """Initialize sentence transformer model"""
         try:
             # Use a lightweight but effective model
-            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
             logger.info("Sentence transformer model loaded successfully")
         except Exception as e:
             logger.error(f"Failed to initialize embedding model: {e}")
@@ -132,7 +132,7 @@ class MontgomeryKnowledgeBase:
                 for i in range(len(results['ids'][0])):
                     formatted_results.append({
                         'id': results['ids'][0][i],
-                        'content': results['documents'][0][i],
+                        'document': results['documents'][0][i],
                         'metadata': results['metadatas'][0][i],
                         'similarity_score': 1 - results['distances'][0][i],  # Convert distance to similarity
                         'relevance': self._calculate_relevance(results['distances'][0][i])
@@ -175,7 +175,7 @@ class MontgomeryKnowledgeBase:
             if results['ids'] and results['ids'][0]:
                 return {
                     'id': results['ids'][0][0],
-                    'content': results['documents'][0][0],
+                    'document': results['documents'][0][0],
                     'metadata': results['metadatas'][0][0]
                 }
             

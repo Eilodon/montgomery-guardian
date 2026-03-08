@@ -1,6 +1,5 @@
 # backend/etl/scheduler.py
 import asyncio
-import schedule
 import time
 from datetime import datetime
 from .crime_etl import run_crime_etl
@@ -28,20 +27,32 @@ def start_scheduler():
     except Exception as e:
         print(f"⚠️ Failed to create fallback data: {e}")
     
-    # Fix critical: dùng lambda + create_task thay vì asyncio.run()
-    schedule.every(1).hours.do(lambda: asyncio.create_task(run_all_etl_jobs()))
-    schedule.every(15).minutes.do(lambda: asyncio.create_task(run_news_scraper()))
-    
     print("⏰ ETL scheduler started.")
     print("📊 Crime + 311 every hour | News every 15 minutes")
     
     asyncio.create_task(scheduler_loop())
 
 async def scheduler_loop():
-    """Background loop"""
+    """Background loop using native asyncio scheduling"""
+    last_hourly_run = 0
+    last_15min_run = 0
+    
     while True:
-        schedule.run_pending()
-        await asyncio.sleep(60)
+        now = time.time()
+        
+        # Crime + 311 every 1 hour (3600 seconds)
+        if now - last_hourly_run >= 3600:
+            asyncio.create_task(run_all_etl_jobs())
+            last_hourly_run = now
+            
+        # News every 15 minutes (900 seconds)
+        # Note: run_all_etl_jobs also runs news_scraper, 
+        # so we only run it separately if it wasn't just run
+        elif now - last_15min_run >= 900:
+            asyncio.create_task(run_news_scraper())
+            last_15min_run = now
+            
+        await asyncio.sleep(30) # Check every 30 seconds
 
 async def start_etl_once():
     """Run once for testing"""

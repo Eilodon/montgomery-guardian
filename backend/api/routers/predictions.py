@@ -7,10 +7,10 @@ import pickle
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from ..models.schemas import PredictionsResponse, RiskPrediction, SimulationResponse, SimulationRequest
+from ..models.schemas import PredictionsResponse, RiskPrediction, SimulationResponse, SimulationRequest, RiskZonesResponse, RiskZone
 from ..core.database import get_db
 
-router = APIRouter()
+router = APIRouter(prefix="/predictions")
 
 # Chỉ load nếu file tồn tại, không crash
 ENSEMBLE_PATH = Path("ml-engine/models/ensemble_model.pkl")
@@ -23,6 +23,10 @@ def get_ensemble_model():
             return pickle.load(f)
     except:
         return None
+
+def get_xgb_model():
+    """Stub for missing XGBoost model loader"""
+    return None
 
 def _generate_mock_predictions(risk_level: Optional[str], forecast_hours: int, limit: int, offset: int) -> List[RiskPrediction]:
     """Generate mock risk prediction data"""
@@ -105,7 +109,7 @@ def _generate_mock_shap_features() -> dict:
     }
     return features
 
-@router.get("/predictions", response_model=PredictionsResponse)
+@router.get("", response_model=PredictionsResponse)
 async def get_risk_predictions(
     risk_level: Optional[str] = Query(None, description="Filter by risk level"),
     forecast_hours: int = Query(24, ge=1, le=168, description="Forecast hours (24, 48, or 168)"),
@@ -139,6 +143,35 @@ async def get_heatmap_data(
     """
     return await get_risk_predictions(limit=500, forecast_hours=forecast_hours, db=db)
 
+@router.get("/summary", response_model=RiskZonesResponse)
+async def get_predictions_summary(
+    forecast_hours: int = Query(24, ge=1, le=168),
+    db: Session = Depends(get_db)
+):
+    """
+    Get aggregated risk zone counts for the dashboard ribbon.
+    """
+    # In a real app, this would be a GROUP BY query on the predictions table
+    # For now, we'll aggregate from our mock generator for consistency
+    predictions = _generate_mock_predictions(None, forecast_hours, 1000, 0)
+    
+    counts = {
+        'critical': 0,
+        'high': 0,
+        'medium': 0,
+        'low': 0
+    }
+    
+    for p in predictions:
+        counts[p.riskLevel] += 1
+        
+    return RiskZonesResponse(data=[
+        RiskZone(level='critical', count=counts['critical']),
+        RiskZone(level='high', count=counts['high']),
+        RiskZone(level='medium', count=counts['medium']),
+        RiskZone(level='low', count=counts['low']),
+    ])
+
 @router.post("/simulate", response_model=SimulationResponse)
 async def simulate_risk_impact(request: SimulationRequest):
     """
@@ -167,7 +200,7 @@ async def simulate_risk_impact(request: SimulationRequest):
         # High backlog level increases open 311 count feature
         sim_features['open_311_count'] = base_features['open_311_count'] * (request.backlogLevel / 50)
         
-        if ensemble_model:
+        if ensemble_model and hasattr(ensemble_model, 'ensemble_predict'):
             result = ensemble_model.ensemble_predict(sim_features)
             # Normalize ensemble score (1-4) to percentage impact (0-100)
             # Higher score = higher risk = lower impact (positive) score
@@ -187,7 +220,11 @@ async def simulate_risk_impact(request: SimulationRequest):
         )
     except Exception as e:
         print(f"❌ Simulation error: {e}")
-        return SimulationResponse(projectedImpact=50, confidenceScore=0.1)
+        return SimulationResponse(
+            projectedImpact=50, 
+            confidenceScore=0.1,
+            factors={"error": 1.0}
+        )
 
 def _generate_ensemble_predictions(
     ensemble_model,
@@ -282,90 +319,6 @@ def _generate_ml_predictions(
         # Fallback to mock data
         return _generate_mock_predictions(risk_level_filter, forecast_hours, limit, offset)
 
-def _generate_mock_predictions(
-    risk_level_filter: Optional[str],
-    forecast_hours: int,
-    limit: int,
-    offset: int
-) -> List[RiskPrediction]:
-    """Generate mock risk prediction data"""
-    
-    # Define Montgomery area coordinates for grid generation
-    montgomery_bounds = {
-        'min_lat': 32.3000,
-        'max_lat': 32.4000,
-        'min_lon': -86.3500,
-        'max_lon': -86.2000
-    }
-    
-    # Generate grid cells
-    grid_size = 0.01  # Approximately 1km grid
-    predictions = []
-    
-    lat = montgomery_bounds['min_lat']
-    while lat <= montgomery_bounds['max_lat']:
-        lon = montgomery_bounds['min_lon']
-        while lon <= montgomery_bounds['max_lon']:
-            # Generate risk prediction for this grid cell
-            risk_level = _calculate_mock_risk_level(lat, lon)
-            
-            # Apply filter if specified
-            if risk_level_filter and risk_level_filter.lower() != risk_level.lower():
-                lon += grid_size
-                continue
-            
-            grid_id = f"grid_{int(lat*1000)}_{int(lon*1000)}"
-            
-            prediction = RiskPrediction(
-                gridCellId=grid_id,
-                latitude=lat,
-                longitude=lon,
-                riskLevel=risk_level,
-                confidenceScore=random.uniform(0.6, 0.95),
-                forecastHours=24 if forecast_hours <= 24 else (48 if forecast_hours <= 48 else 168),
-                shapFeatures=_generate_mock_shap_features(),
-                generatedAt=datetime.now()
-            )
-            
-            predictions.append(prediction)
-            lon += grid_size
-        lat += grid_size
-    
-    # Apply pagination
-    start_idx = offset
-    end_idx = start_idx + limit
-    paginated_predictions = predictions[start_idx:end_idx]
-    
-    return paginated_predictions
-
-def _calculate_mock_risk_level(lat: float, lon: float) -> str:
-    """Calculate mock risk level based on location"""
-    # Simulate higher risk in downtown area
-    downtown_center = (32.3617, -86.2792)
-    distance_to_downtown = ((lat - downtown_center[0])**2 + (lon - downtown_center[1])**2)**0.5
-    
-    # Higher probability of critical/high risk closer to downtown
-    if distance_to_downtown < 0.02:
-        return random.choice(['critical', 'high', 'high', 'medium'])
-    elif distance_to_downtown < 0.05:
-        return random.choice(['high', 'medium', 'medium', 'low'])
-    else:
-        return random.choice(['medium', 'low', 'low'])
-
-def _generate_mock_shap_features() -> dict:
-    """Generate mock SHAP feature importance values"""
-    features = {
-        'crime_density_24h': random.uniform(0.1, 0.8),
-        'crime_density_7d': random.uniform(0.1, 0.7),
-        'time_of_day': random.uniform(0.0, 0.3),
-        'day_of_week': random.uniform(0.0, 0.2),
-        'proximity_to_police': random.uniform(-0.3, 0.1),
-        'population_density': random.uniform(0.1, 0.6),
-        'lighting_level': random.uniform(-0.2, 0.2),
-        'weather_condition': random.uniform(-0.1, 0.3),
-        'nearby_businesses': random.uniform(0.0, 0.4),
-        'historical_crime_rate': random.uniform(0.2, 0.8)
-    }
 
 @router.get("/explain")
 async def get_shap_explainability():

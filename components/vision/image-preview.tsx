@@ -7,10 +7,17 @@ interface ImagePreviewProps {
   imageData: string;
   onConfirm: (processedImage: string) => void;
   onCancel: () => void;
+  onRevokeUrl?: () => void; // thêm prop này
   isProcessing?: boolean;
 }
 
-export function ImagePreview({ imageData, onConfirm, onCancel, isProcessing = false }: ImagePreviewProps) {
+export function ImagePreview({
+  imageData,
+  onConfirm,
+  onCancel,
+  onRevokeUrl,
+  isProcessing = false
+}: ImagePreviewProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [zoom, setZoom] = useState(1);
@@ -28,11 +35,22 @@ export function ImagePreview({ imageData, onConfirm, onCancel, isProcessing = fa
     setIsEditing(!isEditing);
   }, [isEditing]);
 
+  const handleConfirm = useCallback(() => {
+    onConfirm(imageData);
+    // Revoke sau khi image đã được xử lý xong bởi parent
+    setTimeout(() => onRevokeUrl?.(), 100);
+  }, [imageData, onConfirm, onRevokeUrl]);
+
+  const handleCancel = useCallback(() => {
+    onCancel();
+    onRevokeUrl?.();
+  }, [onCancel, onRevokeUrl]);
+
   const applyCrop = useCallback(() => {
     // In a real implementation, this would crop the image
     // For now, we'll just confirm the original image
-    onConfirm(imageData);
-  }, [imageData, onConfirm]);
+    handleConfirm();
+  }, [handleConfirm]);
 
   const imageStyle = {
     transform: `rotate(${rotation}deg) scale(${zoom})`,
@@ -45,7 +63,7 @@ export function ImagePreview({ imageData, onConfirm, onCancel, isProcessing = fa
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold text-slate-900">Review Photo</h3>
         <button
-          onClick={onCancel}
+          onClick={handleCancel}
           disabled={isProcessing}
           className="p-2 text-slate-400 hover:text-slate-600 transition-colors disabled:opacity-50"
           title="Cancel"
@@ -63,7 +81,7 @@ export function ImagePreview({ imageData, onConfirm, onCancel, isProcessing = fa
             style={imageStyle}
             className="w-full h-full object-contain"
           />
-          
+
           {/* Crop Overlay (when editing) */}
           {isEditing && (
             <div
@@ -121,11 +139,10 @@ export function ImagePreview({ imageData, onConfirm, onCancel, isProcessing = fa
         <button
           onClick={handleCrop}
           disabled={isProcessing}
-          className={`p-2 border rounded-lg transition-colors disabled:opacity-50 ${
-            isEditing
-              ? "bg-blue-500 border-blue-500 text-white hover:bg-blue-600"
-              : "bg-white border-slate-300 hover:bg-slate-50"
-          }`}
+          className={`p-2 border rounded-lg transition-colors disabled:opacity-50 ${isEditing
+            ? "bg-blue-500 border-blue-500 text-white hover:bg-blue-600"
+            : "bg-white border-slate-300 hover:bg-slate-50"
+            }`}
           title="Crop image"
         >
           <Crop className="w-4 h-4" />
@@ -159,7 +176,7 @@ export function ImagePreview({ imageData, onConfirm, onCancel, isProcessing = fa
       {/* Action Buttons */}
       <div className="flex gap-4">
         <button
-          onClick={onCancel}
+          onClick={handleCancel}
           disabled={isProcessing}
           className="flex-1 px-6 py-3 border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -176,7 +193,7 @@ export function ImagePreview({ imageData, onConfirm, onCancel, isProcessing = fa
           </button>
         ) : (
           <button
-            onClick={() => onConfirm(imageData)}
+            onClick={handleConfirm}
             disabled={isProcessing}
             className="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >

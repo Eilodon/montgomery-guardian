@@ -4,7 +4,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import { GradeBadge } from "./grade-badge";
 import { TrendIndicator } from "./trend-indicator";
-import type { ScorecardCardProps } from "./types";
+import type { ScorecardCardProps, DistrictData } from "./types";
 
 export function ScorecardCard({ district }: ScorecardCardProps) {
   return (
@@ -33,7 +33,7 @@ export function ScorecardCard({ district }: ScorecardCardProps) {
             {district.crimeIndex.toFixed(1)}
           </dd>
         </div>
-        
+
         <div className="space-y-1">
           <dt className="text-xs text-slate-500 uppercase tracking-wide">
             311 Backlog
@@ -42,7 +42,7 @@ export function ScorecardCard({ district }: ScorecardCardProps) {
             {district.backlog311}
           </dd>
         </div>
-        
+
         <div className="space-y-1">
           <dt className="text-xs text-slate-500 uppercase tracking-wide">
             Trend
@@ -59,8 +59,6 @@ export function ScorecardCard({ district }: ScorecardCardProps) {
 interface ScorecardCardListProps {
   districts: DistrictData[];
 }
-
-import type { DistrictData } from "./types";
 
 export function ScorecardCardList({ districts }: ScorecardCardListProps) {
   if (districts.length === 0) {

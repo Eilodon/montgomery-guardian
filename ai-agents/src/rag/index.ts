@@ -6,9 +6,14 @@ import { z } from 'genkit';
 
 export interface SearchResult {
   id: string;
-  document: string;
+  document: z.infer<typeof z.string>; // string;
   metadata: Record<string, any>;
-  distance: number;
+  similarity_score: number;
+  relevance: string;
+  relevance_explanation: string;
+  actionability_score: number;
+  freshness_score: number;
+  combined_score: number;
 }
 
 export interface RAGResponse {
@@ -24,7 +29,7 @@ export class RAGService {
 
   constructor() {
     // THỢ RÈN: Gọi tới Python RAG Service API, không gọi thẳng ChromaDB
-    this.backendUrl = process.env.BACKEND_API_URL || 'http://localhost:8000'; 
+    this.backendUrl = process.env.BACKEND_API_URL || 'http://localhost:8000';
   }
 
   async searchKnowledge(query: string, categoryFilter?: string, maxResults: number = 5): Promise<RAGResponse> {
@@ -70,7 +75,12 @@ export const ragSearchTool = {
       id: z.string(),
       document: z.string(),
       metadata: z.record(z.any()),
-      relevanceScore: z.number()
+      similarity_score: z.number(),
+      relevance: z.string(),
+      relevance_explanation: z.string(),
+      actionability_score: z.number(),
+      freshness_score: z.number(),
+      combined_score: z.number()
     })),
     total_found: z.number(),
     search_strategy: z.string()
@@ -81,7 +91,7 @@ export const ragSearchTool = {
       input.category,
       input.maxResults
     );
-    
+
     return {
       results: result.results,
       total_found: result.total_found,

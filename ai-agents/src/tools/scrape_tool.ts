@@ -1,30 +1,22 @@
 // ai-agents/src/tools/scrape_tool.ts
 import axios from 'axios';
+import { logger } from '../utils/logger';
 
-// Thêm Type cho Response để LLM không bị ảo giác
-export interface ToolResponse {
-  success: boolean;
-  data: any[] | null;
-  total: number;
-  source: string;
-  query?: string;
-  error?: string;
-  message?: string;
-}
+import type { ToolResponse } from '../types/agents';
 
-export async function scrapeTool(params: {
+export async function fetchAlertsTool(params: {
   query: string;
   limit?: number;
   userLocation?: { lat: number; lng: number };
 }): Promise<ToolResponse> {
   try {
     const backendUrl = process.env.BACKEND_API_URL || 'http://localhost:8000';
-    
+
     // Build query parameters
     const queryParams: any = {
       limit: params.limit || 5,
     };
-    
+
     // Extract severity from query if present
     const queryLower = params.query.toLowerCase();
     if (queryLower.includes('critical') || queryLower.includes('emergency')) {
@@ -36,7 +28,7 @@ export async function scrapeTool(params: {
     } else if (queryLower.includes('low')) {
       queryParams.severity = 'low';
     }
-    
+
     // Make request to backend API for alerts
     const response = await axios.get(`${backendUrl}/api/v1/alerts`, {
       params: queryParams,
@@ -45,22 +37,19 @@ export async function scrapeTool(params: {
         'Content-Type': 'application/json',
       }
     });
-    
-    console.log('Scrape tool response:', { 
-      dataCount: response.data.data?.length || 0,
-      total: response.data.total 
-    });
-    
-    return { 
-      success: true, 
-      data: response.data.data || [], 
-      total: response.data.total || 0, 
+
+    logger.toolResult('Alerts', response.data.data?.length || 0, response.data.total);
+
+    return {
+      success: true,
+      data: response.data.data || [],
+      total: response.data.total || 0,
       source: 'backend_api',
-      query: params.query 
+      query: params.query
     };
-    
+
   } catch (error) {
-    console.error('[CIRCUIT BREAKER] Scrape tool failed:', error);
+    logger.error('AlertsTool', error);
     // THỢ RÈN: Tuyệt đối không dùng getMockAlertData(). Báo lỗi thẳng cho LLM.
     return {
       success: false,

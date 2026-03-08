@@ -27,6 +27,7 @@ export const ToolResponseSchema = z.object({
     data: z.array(z.any()).nullable(),
     total: z.number(),
     source: z.string(),
+    query: z.string().optional(),
     error: z.string().optional(),
     message: z.string().optional()
 });

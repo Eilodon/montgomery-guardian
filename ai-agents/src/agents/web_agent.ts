@@ -1,15 +1,17 @@
 // ai-agents/src/agents/web_agent.ts
-import { scrapeTool, ToolResponse } from '../tools/scrape_tool';
-import { AgentInput } from '../types/agents';
+import { fetchAlertsTool } from '../tools/scrape_tool';
+import { AgentInput, ToolResponse } from '../types/agents';
+import { sanitizeForPrompt } from '../utils/prompt_sanitizer';
+import { logger } from '../utils/logger';
 
 export async function webAgent(ai: any, input: AgentInput): Promise<any> {
   try {
-    console.log('Web agent processing request:', { message: input.message });
+    logger.agentStart('CityAlerts', input.message.length, !!input.userLocation);
 
     // Extract relevant information from the user's message
-    const locationContext = input.userLocation ? 
+    const locationContext = input.userLocation ?
       `User location: ${input.userLocation.lat}, ${input.userLocation.lng}` : '';
-    
+
     const historyContext = input.history && input.history.length > 0 ?
       `Recent conversation: ${input.history.slice(-2).map((h: any) => `${h.role}: ${h.content}`).join(' | ')}` : '';
 
@@ -17,7 +19,7 @@ export async function webAgent(ai: any, input: AgentInput): Promise<any> {
     let webData = null;
     let webContext = '';
     try {
-      const toolRes = await scrapeTool({
+      const toolRes = await fetchAlertsTool({
         query: input.message,
         limit: 5,
         userLocation: input.userLocation
@@ -29,37 +31,30 @@ export async function webAgent(ai: any, input: AgentInput): Promise<any> {
         webContext = `\nLưu ý hệ thống: ${toolRes.message}`;
       }
     } catch (toolError) {
-      console.warn('Web scraping tool failed:', toolError);
-      webContext = '\nLưu ý hệ thống: Không thể truy cập thông tin thời gian thực hiện tại.';
+      logger.error('AlertsTool', toolError);
+      webContext = '\nLưu ý hệ thống: Không thể truy cập thông tin cảnh báo thời gian thực hiện tại.';
     }
 
     const { text } = await ai.generate({
-      prompt: `You are a web intelligence expert for Montgomery, Alabama. You have access to recent news and city updates.
+      prompt: `You are a city alerts and updates expert for Montgomery, Alabama.
+You have access to the city's official alert and notification database.
 
+CONTEXT:
 ${locationContext}
 ${historyContext}
-${webData ? `Recent web information: ${JSON.stringify(webData).substring(0, 500)}...` : ''}
+${webData ? `Recent web information: ${JSON.stringify(sanitizeForPrompt(webData)).substring(0, 400)}` : 'No real-time news data available.'}
 ${webContext}
 
-User question: "${input.message}"
+USER QUESTION: "${input.message}"
 
-Provide a helpful response that:
-1. Addresses their question about current events or news
-2. Provides recent updates if available
-3. Mentions sources when possible
-4. Focuses on Montgomery, Alabama relevant information
-5. Includes practical information about road closures, events, or city updates
-6. Maintains a professional, informative tone
+RESPONSE GUIDELINES:
+1. Address the user's specific concern about current events or city news
+2. Reference information from the web context when available
+3. Provide practical information (road closures, events, weather impacts, etc.)
+4. Suggest further resources or official Montgomery city news sources if needed
+5. Maintain a professional, informative, and timely tone
 
-Common topics people ask about:
-- Road closures and traffic updates
-- City events and announcements
-- Emergency situations
-- Weather-related impacts
-- City council decisions
-- Community updates
-
-Keep response under 200 words. Focus on recent, relevant information for Montgomery residents.`,
+Keep response under 200 words. Focus on Montgomery, Alabama context.`,
     });
 
     return {
@@ -73,11 +68,11 @@ Keep response under 200 words. Focus on recent, relevant information for Montgom
     };
 
   } catch (error) {
-    console.error('Web agent failed:', error);
+    logger.error('CityAlertsAgent', error);
     return {
-      content: 'I apologize, but I\'m having trouble accessing current web information right now. For the latest Montgomery news and updates, please check the official Montgomery city website or local news sources like WSFA and the Montgomery Advertiser.',
+      content: 'I apologize, but I\'m having trouble accessing current city alerts right now. For the latest Montgomery news and updates, please check the official Montgomery city website or local news sources.',
       agentType: 'web_scraper',
-      metadata: { error: 'web_agent_failed' }
+      metadata: { error: 'city_alerts_agent_failed' }
     };
   }
 }

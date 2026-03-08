@@ -105,6 +105,55 @@ paths:
                 properties:
                   alerts: { type: array, items: { $ref: '#/components/schemas/AlertItem' } }
 
+  /api/v1/kpis:
+    get:
+      summary: Get KPI dashboard data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KPIData' }
+
+  /api/v1/districts:
+    get:
+      summary: Get district safety data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DistrictData' }
+
+  /api/v1/predictions/heatmap:
+    get:
+      summary: Get heatmap data for map visualization
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    latitude: { type: number }
+                    longitude: { type: number }
+                    intensity: { type: number }
+
+  /api/v1/predictions/explain:
+    get:
+      summary: Get SHAP explainability data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  features: { type: array, items: { type: object } }
+                  globalImportance: { type: object }
+
   /api/v1/chat:
     post:
       summary: Multi-agent chat endpoint
@@ -206,3 +255,43 @@ components:
         confidence: { type: number }
         description: { type: string }
         prefilledForm: { type: object }
+    KPIData:
+      type: object
+      properties:
+        incidentsToday:
+          type: object
+          properties:
+            count: { type: integer }
+            trend:
+              type: object
+              properties:
+                direction: { type: string, enum: [up, down] }
+                percentage: { type: number }
+        calls911:
+          type: object
+          properties:
+            count: { type: integer }
+            sparklineData: { type: array, items: { type: number } }
+        open311Requests:
+          type: object
+          properties:
+            count: { type: integer }
+            topCategory: { type: string }
+        avgResponseTime:
+          type: object
+          properties:
+            minutes: { type: number }
+            trend:
+              type: object
+              properties:
+                direction: { type: string, enum: [up, down] }
+                percentage: { type: number }
+    DistrictData:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        grade: { type: string, enum: [A, B, C, D, F] }
+        crimeIndex: { type: number }
+        backlog311: { type: integer }
+        trend: { type: number }

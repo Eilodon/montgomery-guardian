@@ -9,13 +9,15 @@ interface CrimeHeatmapProps {
   className?: string;
   onIncidentClick?: (incident: CrimeIncident) => void;
   timeRange?: "24h" | "7d" | "30d";
+  onTimeRangeChange?: (range: "24h" | "7d" | "30d") => void;
   filterRiskLevel?: "all" | "critical" | "high" | "medium" | "low";
 }
 
-export function CrimeHeatmap({ 
-  className = "", 
+export function CrimeHeatmap({
+  className = "",
   onIncidentClick,
   timeRange = "24h",
+  onTimeRangeChange,
   filterRiskLevel = "all"
 }: CrimeHeatmapProps) {
   const { map, setMap } = useMapboxMap();
@@ -31,29 +33,29 @@ export function CrimeHeatmap({
       setIsLoading(true);
       try {
         const response = await fetch("/api/v1/crime?limit=500", {
-            signal: abortController.signal
+          signal: abortController.signal
         });
-        
+
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-        
+
         const apiData = await response.json();
         setCrimeData(apiData.data || []);
       } catch (error: any) {
         if (error.name === 'AbortError') return;
-        
+
         console.error("[FATAL] Map Topology sync failed:", error);
         // THỢ RÈN: KHÔNG DÙNG MOCK DATA. Gán mảng rỗng.
-        setCrimeData([]); 
+        setCrimeData([]);
         // TIP: Có thể dispatch event hiển thị Toast Notification tại đây
       } finally {
         if (!abortController.signal.aborted) {
-            setIsLoading(false);
+          setIsLoading(false);
         }
       }
     };
 
     loadCrimeData();
-    
+
     return () => abortController.abort();
   }, [timeRange]);
 
@@ -65,7 +67,7 @@ export function CrimeHeatmap({
         const incidentTime = new Date(incident.timestamp);
         const now = new Date();
         const timeDiff = now.getTime() - incidentTime.getTime();
-        
+
         // Time range filter
         let timeFilter = true;
         switch (timeRange) {
@@ -79,14 +81,14 @@ export function CrimeHeatmap({
             timeFilter = timeDiff <= 30 * 24 * 60 * 60 * 1000;
             break;
         }
-        
+
         // Risk level filter (based on crime type)
         let riskFilter = true;
         if (filterRiskLevel !== "all") {
           const riskLevel = getRiskLevel(incident.type);
           riskFilter = riskLevel === filterRiskLevel;
         }
-        
+
         return timeFilter && riskFilter;
       });
 
@@ -160,28 +162,28 @@ export function CrimeHeatmap({
           <AlertTriangle className="w-4 h-4 text-red-400" />
           Crime Statistics
         </h3>
-        
+
         <div className="space-y-2">
           <div className="flex justify-between items-center">
             <span className="text-xs text-slate-400">Total Incidents</span>
             <span className="text-sm font-medium text-slate-100">{stats.total}</span>
           </div>
-          
+
           <div className="flex justify-between items-center">
             <span className="text-xs text-slate-400">Violent</span>
             <span className="text-sm font-medium text-red-400">{stats.violent}</span>
           </div>
-          
+
           <div className="flex justify-between items-center">
             <span className="text-xs text-slate-400">Property</span>
             <span className="text-sm font-medium text-orange-400">{stats.property}</span>
           </div>
-          
+
           <div className="flex justify-between items-center">
             <span className="text-xs text-slate-400">Drug</span>
             <span className="text-sm font-medium text-yellow-400">{stats.drug}</span>
           </div>
-          
+
           <div className="flex justify-between items-center">
             <span className="text-xs text-slate-400">Open Cases</span>
             <span className="text-sm font-medium text-blue-400">{stats.open}</span>
@@ -198,12 +200,11 @@ export function CrimeHeatmap({
             {(["24h", "7d", "30d"] as const).map((range) => (
               <button
                 key={range}
-                onClick={() => {/* TODO: Implement time range change */}}
-                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-                  timeRange === range
+                onClick={() => onTimeRangeChange?.(range)}
+                className={`px-2 py-1 rounded text-xs font-medium transition-colors ${timeRange === range
                     ? "bg-blue-500 text-white"
                     : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-                }`}
+                  }`}
               >
                 {range}
               </button>
@@ -252,7 +253,7 @@ export function CrimeHeatmap({
               ×
             </button>
           </div>
-          
+
           <div className="space-y-2 text-xs">
             <div>
               <span className="text-slate-400">Type:</span>
@@ -264,11 +265,10 @@ export function CrimeHeatmap({
             </div>
             <div>
               <span className="text-slate-400">Status:</span>
-              <span className={`ml-2 capitalize ${
-                selectedIncident.status === "open" ? "text-red-400" :
-                selectedIncident.status === "investigating" ? "text-yellow-400" :
-                "text-green-400"
-              }`}>
+              <span className={`ml-2 capitalize ${selectedIncident.status === "open" ? "text-red-400" :
+                  selectedIncident.status === "investigating" ? "text-yellow-400" :
+                    "text-green-400"
+                }`}>
                 {selectedIncident.status}
               </span>
             </div>

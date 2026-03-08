@@ -3,6 +3,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
 import json
+import random
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 import uvicorn
@@ -89,7 +90,7 @@ async def get_kpis():
         }
     }
 
-@app.get("/api/v1/alerts/live")
+@app.get("/api/v1/alerts")
 async def get_live_alerts():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -210,7 +211,7 @@ async def get_heatmap_data():
         "features": features
     }
 
-@app.get("/api/v1/requests/active")
+@app.get("/api/v1/requests")
 async def get_active_requests():
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -260,4 +261,4 @@ async def get_shap_explainability():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

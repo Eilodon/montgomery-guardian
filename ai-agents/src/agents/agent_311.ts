@@ -1,11 +1,13 @@
 // ai-agents/src/agents/agent_311.ts
-import { queryRequestsTool, ToolResponse } from '../tools/requests_tool';
+import { queryRequestsTool } from '../tools/requests_tool';
 import { ragService } from '../rag';
-import { AgentInput } from '../types/agents';
+import { AgentInput, ToolResponse } from '../types/agents';
+import { logger } from '../utils/logger';
+import { sanitizeForPrompt } from '../utils/prompt_sanitizer';
 
 export async function agent311(ai: any, input: AgentInput): Promise<any> {
   try {
-    console.log('311 agent processing request:', { message: input.message });
+    logger.agentStart('311', input.message.length, !!input.userLocation);
 
     // Extract relevant information from the user's message
     const locationContext = input.userLocation ?
@@ -24,11 +26,10 @@ export async function agent311(ai: any, input: AgentInput): Promise<any> {
       );
 
       if (ragResult.results.length > 0) {
-        ragContext = '\nRelevant 311 policies and procedures:\n' +
-          ragResult.results.map(r => `- ${r.document.substring(0, 200)}...`).join('\n');
+        ragContext = `Dưới đây là thông tin về các quy định và dịch vụ 311 liên quan:\n${ragResult.results.map((r: any) => `- ${r.document.substring(0, 200)}...`).join('\n')}`;
       }
     } catch (ragError) {
-      console.warn('RAG search failed:', ragError);
+      logger.error('311_RAG', ragError);
     }
 
     // Use tools to get relevant 311 data
@@ -47,32 +48,20 @@ export async function agent311(ai: any, input: AgentInput): Promise<any> {
         ragContext += `\nLưu ý hệ thống: ${toolRes.message}`;
       }
     } catch (toolError) {
-      console.warn('311 tool failed:', toolError);
+      logger.error('311_Tool', toolError);
       ragContext += '\nLưu ý hệ thống: Không thể truy cập dữ liệu yêu cầu 311 hiện tại.';
     }
 
+    // 3. Generate response with tool-enriched context
     const { text } = await ai.generate({
-      prompt: `You are a 311 service expert for Montgomery, Alabama. You help citizens with city service requests and issues.
+      prompt: `You are a helpful 311 service assistant for Montgomery, Alabama.
+You help citizens report and track city service requests (potholes, graffiti, trash, etc.).
 
+CONTEXT:
 ${locationContext}
 ${historyContext}
 ${ragContext}
-${requestData ? `Recent 311 requests in area: ${JSON.stringify(requestData).substring(0, 500)}...` : ''}
-
-User question: "${input.message}"
-
-Provide a helpful response that:
-1. Addresses their specific 311 service question
-2. References relevant city policies and procedures when available
-3. Provides relevant service request information if available
-4. Explains how to submit or check 311 requests
-5. Suggests appropriate contact methods (online, phone, app)
-6. Includes relevant timelines or expectations
-7. Maintains a helpful, service-oriented tone
-
-Common 311 services in Montgomery:
-- Potholes and road repair
-- Graffiti removal
+${requestData ? `Recent 311 request data: ${JSON.stringify(sanitizeForPrompt(requestData)).substring(0, 400)}` : 'No specific 311 request data available for this query.'}
 - Trash collection issues
 - Flooding and drainage
 - Overgrown grass/vegetation
@@ -93,7 +82,7 @@ Keep response under 200 words. Focus on Montgomery, Alabama services.`,
     };
 
   } catch (error) {
-    console.error('311 agent failed:', error);
+    logger.error('Agent311', error);
     return {
       content: 'I apologize, but I\'m having trouble accessing 311 service information right now. You can submit 311 requests through the Montgomery 311 website, call 311, or use the Montgomery 311 mobile app.',
       agentType: 'service_311',

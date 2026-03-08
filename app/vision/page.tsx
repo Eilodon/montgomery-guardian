@@ -53,16 +53,16 @@ export default function VisionPage() {
       // 2. Sử dụng chuẩn Multipart Form Data khớp với OpenAPI
       const formData = new FormData();
       formData.append('image', imageBlob, 'vision_capture.jpg');
-      
+
       if (imageMetadata?.location) {
-          formData.append('lat', imageMetadata.location.latitude.toString());
-          formData.append('lng', imageMetadata.location.longitude.toString());
+        formData.append('lat', imageMetadata.location.latitude.toString());
+        formData.append('lng', imageMetadata.location.longitude.toString());
       }
 
-      const response = await fetch("/api/v1/vision/analyze", {
+      const response = await fetch("/api/proxy/vision/analyze", {
         method: "POST",
         // Bỏ Header Content-Type để Fetch tự động tính Boundary cho multipart
-        body: formData, 
+        body: formData,
       });
 
       if (!response.ok) throw new Error("Analysis failed");
@@ -100,7 +100,7 @@ export default function VisionPage() {
 
     try {
       // Submit 311 request
-      const response = await fetch("/api/v1/requests-311", {
+      const response = await fetch("/api/proxy/requests", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -157,20 +157,20 @@ export default function VisionPage() {
             {/* Progress Steps */}
             <div className="hidden md:flex items-center gap-2">
               <div className={`px-3 py-1 rounded-full text-xs font-medium ${step === "upload" ? "bg-blue-500 text-white" :
-                  ["preview", "analysis", "result"].includes(step) ? "bg-green-500 text-white" :
-                    "bg-slate-200 text-slate-600"
+                ["preview", "analysis", "result"].includes(step) ? "bg-green-500 text-white" :
+                  "bg-slate-200 text-slate-600"
                 }`}>
                 1. Upload
               </div>
               <div className={`px-3 py-1 rounded-full text-xs font-medium ${step === "preview" ? "bg-blue-500 text-white" :
-                  ["analysis", "result"].includes(step) ? "bg-green-500 text-white" :
-                    "bg-slate-200 text-slate-600"
+                ["analysis", "result"].includes(step) ? "bg-green-500 text-white" :
+                  "bg-slate-200 text-slate-600"
                 }`}>
                 2. Review
               </div>
               <div className={`px-3 py-1 rounded-full text-xs font-medium ${step === "analysis" ? "bg-blue-500 text-white" :
-                  step === "result" ? "bg-green-500 text-white" :
-                    "bg-slate-200 text-slate-600"
+                step === "result" ? "bg-green-500 text-white" :
+                  "bg-slate-200 text-slate-600"
                 }`}>
                 3. Analyze
               </div>
@@ -198,18 +198,26 @@ export default function VisionPage() {
 
         {/* Step Content */}
         <div className="bg-slate-950 border border-slate-700 rounded-2xl shadow-xl p-6">
-          {step === "upload" && (
+          <div className={step !== "upload" ? "hidden" : ""}>
             <CameraUpload
               onImageCapture={handleImageCapture}
               isProcessing={isProcessing}
             />
-          )}
+          </div>
 
           {step === "preview" && imageData && (
             <ImagePreview
               imageData={imageData}
               onConfirm={handleImageConfirm}
               onCancel={handleCancel}
+              onRevokeUrl={() => {
+                // Ta có thể revoke thủ công ở đây nếu cần, 
+                // nhưng CameraUpload đã có logic track URL hiện tại.
+                // Tuy nhiên theo thiết kế mới, ImagePreview gọi onRevokeUrl
+                // để đảm bảo dọn dẹp sau khi dùng xong.
+                URL.revokeObjectURL(imageData);
+                setImageData("");
+              }}
               isProcessing={isProcessing}
             />
           )}

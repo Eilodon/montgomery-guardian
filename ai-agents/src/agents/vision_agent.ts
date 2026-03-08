@@ -1,8 +1,9 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { logger } from '../utils/logger';
 
 // Initialize Google Generative AI for direct Vision API calls
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
-const visionModel = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+const visionModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
 // Vision analysis function
 export async function visionAnalysisFlow(input: {
@@ -12,10 +13,7 @@ export async function visionAnalysisFlow(input: {
   lng?: number;
 }) {
   try {
-    console.log('Vision analysis started:', {
-      mimeType: input.mimeType,
-      hasLocation: !!(input.lat && input.lng)
-    });
+    logger.agentStart('Vision', 0, !!(input.lat && input.lng)); // 0 length as it's an image
 
     // Prepare the image part
     const imageParts = [
@@ -72,7 +70,7 @@ Return JSON only (no markdown, no explanation):
     try {
       parsedResult = JSON.parse(text);
     } catch (parseError) {
-      console.error('Failed to parse vision response:', parseError, 'Raw text:', text);
+      logger.error('VisionParse', parseError);
       throw new Error('Invalid vision analysis response format');
     }
 
@@ -84,7 +82,7 @@ Return JSON only (no markdown, no explanation):
     // Ensure confidence is within valid range
     parsedResult.confidence = Math.max(0, Math.min(1, parsedResult.confidence));
 
-    console.log('Vision analysis completed:', {
+    logger.info('VisionResult', {
       incidentType: parsedResult.incidentType,
       severity: parsedResult.severity,
       confidence: parsedResult.confidence
@@ -93,7 +91,7 @@ Return JSON only (no markdown, no explanation):
     return parsedResult;
 
   } catch (error) {
-    console.error('Vision analysis failed:', error);
+    logger.error('VisionFlow', error);
 
     // Fallback response for when vision analysis fails
     return {

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { useMapData } from "./map-data-context";
 
 interface MapboxMapProps {
   children?: React.ReactNode;
@@ -38,6 +39,12 @@ export function MapboxMap({
   showHeatmap = false,
   show311Points = false,
 }: MapboxMapProps) {
+  const { crimeData: contextCrimeData, requests311: contextRequests311 } = useMapData();
+
+  // Use props if provided, otherwise fallback to context
+  const effectiveCrimeData = crimeData ?? contextCrimeData;
+  const effectiveRequests311 = requests311 ?? contextRequests311;
+
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -54,6 +61,13 @@ export function MapboxMap({
 
     // Set the access token
     mapboxgl.accessToken = mapboxToken;
+
+    // Create popup for downtown marker (accessible for cleanup)
+    const popup = new mapboxgl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 25,
+    });
 
     // Initialize the map
     const mapInstance = new mapboxgl.Map({
@@ -156,13 +170,6 @@ export function MapboxMap({
         },
       });
 
-      // Add popup for downtown marker
-      const popup = new mapboxgl.Popup({
-        closeButton: false,
-        closeOnClick: false,
-        offset: 25,
-      });
-
       mapInstance.on("mouseenter", "downtown-marker", (e) => {
         const feature = e.features?.[0];
         if (!feature || !feature.geometry) return;
@@ -197,6 +204,7 @@ export function MapboxMap({
 
     // Cleanup
     return () => {
+      popup.remove();
       map.current?.remove();
       map.current = null;
     };
@@ -216,15 +224,15 @@ export function MapboxMap({
   // Handle layers
   useEffect(() => {
     if (map.current && mapLoaded) {
-      if (showHeatmap && crimeData) {
-        addCrimeHeatmapLayer(map.current, crimeData);
+      if (showHeatmap && effectiveCrimeData) {
+        addCrimeHeatmapLayer(map.current, effectiveCrimeData);
       } else if (!showHeatmap && map.current.getLayer("crime-heatmap-circles")) {
         map.current.removeLayer("crime-heatmap-circles");
         map.current.removeSource("crime-heatmap");
       }
 
-      if (show311Points && requests311) {
-        add311MarkersLayer(map.current, requests311);
+      if (show311Points && effectiveRequests311) {
+        add311MarkersLayer(map.current, effectiveRequests311);
       } else if (!show311Points && map.current.getLayer("311-markers-symbols")) {
         map.current.removeLayer("311-markers-symbols");
         map.current.removeSource("311-markers");
@@ -277,43 +285,39 @@ export function addCrimeHeatmapLayer(
   crimeData: any[],
   layerId: string = "crime-heatmap"
 ) {
-  // THỢ RÈN: Tuyệt đối không thao tác nếu style chưa load xong (Ngăn crash WebGL)
+  // Guard: không thao tác nếu style chưa load xong
   if (!map.isStyleLoaded()) {
-      map.once('styledata', () => addCrimeHeatmapLayer(map, crimeData, layerId));
-      return;
+    map.once("styledata", () => addCrimeHeatmapLayer(map, crimeData, layerId));
+    return;
   }
 
-  const sourceData = {
-      type: "FeatureCollection" as const,
-      features: crimeData.map((crime) => ({
-          type: "Feature",
-          properties: {
-              ...crime,
-              intensity: crime.riskLevel === "critical" ? 1 : crime.riskLevel === "high" ? 0.75 : crime.riskLevel === "medium" ? 0.5 : 0.25,
-          },
-          geometry: {
-              type: "Point",
-              coordinates: [crime.longitude, crime.latitude],
-          },
-      })),
+  const sourceData: mapboxgl.GeoJSONSourceSpecification["data"] = {
+    type: "FeatureCollection",
+    features: crimeData.map((crime) => ({
+      type: "Feature",
+      properties: {
+        ...crime,
+        intensity:
+          crime.riskLevel === "critical"
+            ? 1
+            : crime.riskLevel === "high"
+              ? 0.75
+              : crime.riskLevel === "medium"
+                ? 0.5
+                : 0.25,
+      },
+      geometry: {
+        type: "Point",
+        coordinates: [crime.longitude, crime.latitude],
+      },
+    })),
   };
 
-  const existingSource = map.getSource(layerId) as mapboxgl.GeoJSONSource;
-  
+  const existingSource = map.getSource(layerId) as mapboxgl.GeoJSONSource | undefined;
+
   if (!existingSource) {
-      // Create new
-      map.addSource(layerId, { type: "geojson", data: sourceData });
-      map.addLayer({
-          id: `${layerId}-circles`,
-          type: "circle",
-          source: layerId,
-          // ... paint config
-      });
-  } else {
-      // THỢ RÈN: Cập nhật an toàn (không bị chớp giật)
-      existingSource.setData(sourceData);
-  }
-}
+    // ── First render: tạo source + layer với full paint config ──────────────
+    map.addSource(layerId, { type: "geojson", data: sourceData });
 
     map.addLayer(
       {
@@ -322,28 +326,17 @@ export function addCrimeHeatmapLayer(
         source: layerId,
         paint: {
           "circle-radius": [
-            "interpolate",
-            ["linear"],
-            ["zoom"],
-            8,
-            ["*", 10, ["get", "intensity"]],
-            15,
-            ["*", 30, ["get", "intensity"]],
+            "interpolate", ["linear"], ["zoom"],
+            8, ["*", 10, ["get", "intensity"]],
+            15, ["*", 30, ["get", "intensity"]],
           ],
           "circle-color": [
-            "interpolate",
-            ["linear"],
-            ["get", "intensity"],
-            0,
-            "#10b981", // green
-            0.25,
-            "#eab308", // yellow
-            0.5,
-            "#f97316", // orange
-            0.75,
-            "#ef4444", // red
-            1,
-            "#dc2626", // dark red
+            "interpolate", ["linear"], ["get", "intensity"],
+            0, "#10b981", // green  — low
+            0.25, "#eab308", // yellow — medium
+            0.5, "#f97316", // orange — high
+            0.75, "#ef4444", // red    — critical
+            1, "#dc2626", // dark red
           ],
           "circle-opacity": 0.6,
           "circle-stroke-color": "#ffffff",
@@ -351,27 +344,11 @@ export function addCrimeHeatmapLayer(
           "circle-stroke-opacity": 0.3,
         },
       },
-      "montgomery-boundary-fill"
+      "montgomery-boundary-fill" // insert below boundary để không bị che
     );
   } else {
-    // Update existing source
-    const source = map.getSource(layerId) as mapboxgl.GeoJSONSource;
-    if (source) {
-      source.setData({
-        type: "FeatureCollection",
-        features: crimeData.map((crime) => ({
-          type: "Feature",
-          properties: {
-            ...crime,
-            intensity: crime.riskLevel === "critical" ? 1 : crime.riskLevel === "high" ? 0.75 : crime.riskLevel === "medium" ? 0.5 : 0.25,
-          },
-          geometry: {
-            type: "Point",
-            coordinates: [crime.longitude, crime.latitude],
-          },
-        })),
-      });
-    }
+    // ── Subsequent updates: chỉ setData, KHÔNG recreate layer (tránh flicker) ─
+    existingSource.setData(sourceData as GeoJSON.FeatureCollection);
   }
 }
 

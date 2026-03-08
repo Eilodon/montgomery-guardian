@@ -19,11 +19,7 @@ import {
   usePredictions,
   useHeatmapData,
   useActive311Requests,
-  sendChatMessage,
-  analyzeImage,
   useSHAPExplainability,
-  type ChatMessage,
-  type VisionAnalysisResult
 } from "@/lib/api";
 
 export default function DemoPage() {
@@ -43,12 +39,6 @@ export default function DemoPage() {
   const isLoadingAnalytics = shapLoading;
   const isLoadingScorecard = districtsLoading;
 
-  const isLoading = {
-    map: isLoadingMap,
-    dashboard: isLoadingDashboard,
-    analytics: isLoadingAnalytics,
-    scorecard: isLoadingScorecard,
-  }[activeView] ?? false;
 
   return (
     <div className="min-h-screen flex flex-col">

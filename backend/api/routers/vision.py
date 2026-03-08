@@ -19,8 +19,8 @@ AI_AGENTS_URL = settings.ai_agents_url
 async def analyze_image(
     image: UploadFile = File(...),
     description: Optional[str] = Form(None),
-    location_lat: Optional[float] = Form(None),
-    location_lon: Optional[float] = Form(None)
+    lat: Optional[float] = Form(None),
+    lng: Optional[float] = Form(None)
 ):
     """
     Analyze an image to detect service requests (potholes, graffiti, etc.).
@@ -48,14 +48,14 @@ async def analyze_image(
         image_base64 = base64.b64encode(content).decode('utf-8')
         
         # Try direct Gemini Vision API first
-        result = await _analyze_with_gemini(image_base64, image.content_type, location_lat, location_lon, description)
+        result = await _analyze_with_gemini(image_base64, image.content_type, lat, lng, description)
         
         return VisionResponse(result=result)
                 
     except Exception as e:
         print(f"Vision analysis error: {e}")
         # Return fallback response on any error
-        fallback_result = _get_fallback_vision_analysis(image.filename if image else "unknown", description, location_lat, location_lon)
+        fallback_result = _get_fallback_vision_analysis(image.filename if image else "unknown", description, lat, lng)
         return VisionResponse(result=fallback_result)
 
 async def _analyze_with_gemini(

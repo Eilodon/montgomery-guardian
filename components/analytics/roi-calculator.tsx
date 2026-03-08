@@ -50,27 +50,37 @@ export function ROICalculator({ className = "" }: ROICalculatorProps) {
 
   // Calculate ROI when inputs change
   useEffect(() => {
-    const totalCosts = costInputs.staffCosts + costInputs.operationalCosts + costInputs.technologyCosts + costInputs.trainingCosts;
+    // 1. Calculate Monthly Benefits
+    const hourlyStaffCost = costInputs.staffCosts / 2080;
+    const monthlyTimeSavings = benefitInputs.reducedResponseTime * hourlyStaffCost * 4.33;
+    const monthlyAutomationSavings = benefitInputs.automatedReports * 2 * 4.33;
+    const monthlyRiskSavings = benefitInputs.riskMitigation * 500; // $500 per incident mitigation
+    const annualAccuracySavings = (costInputs.staffCosts + costInputs.operationalCosts) * (benefitInputs.improvedAccuracy / 100) * 0.05;
+    const monthlyAccuracySavings = annualAccuracySavings / 12;
 
-    // Calculate benefits
-    const hourlyStaffCost = costInputs.staffCosts / 2080; // 40 hours/week * 52 weeks
-    const timeSavingsValue = benefitInputs.reducedResponseTime * hourlyStaffCost * 4.33; // weeks in timeHorizon
-    const automationSavings = benefitInputs.automatedReports * 2 * 4.33; // $2 per report * weeks
-    const accuracySavings = totalCosts * (benefitInputs.improvedAccuracy / 100) * 0.1; // 10% of costs from accuracy
-    const riskSavings = benefitInputs.riskMitigation * 5000 * 4.33; // $5000 per incident * weeks
+    const totalMonthlyBenefit = monthlyTimeSavings + monthlyAutomationSavings + monthlyRiskSavings + monthlyAccuracySavings;
 
-    const totalBenefits = timeSavingsValue + automationSavings + accuracySavings + riskSavings;
-    const netBenefits = totalBenefits - (costInputs.technologyCosts + costInputs.trainingCosts);
-    const monthlyROI = (netBenefits / (timeHorizon / 12)) / (totalCosts / 12) * 100;
-    const annualROI = (netBenefits / (timeHorizon / 12)) / (totalCosts / 12) * 12;
-    const paybackPeriod = (costInputs.technologyCosts + costInputs.trainingCosts) / (netBenefits / (timeHorizon / 12));
+    // 2. Initial Investment (One-time)
+    const initialInvestment = costInputs.technologyCosts + costInputs.trainingCosts;
+
+    // 3. Benefits at Time Horizon
+    const totalBenefitsAtHorizon = totalMonthlyBenefit * timeHorizon;
+
+    // 4. ROI at Horizon (Cumulative)
+    const netReturn = totalBenefitsAtHorizon - initialInvestment;
+    const horizonROI = initialInvestment > 0 ? (netReturn / initialInvestment) * 100 : 0;
+
+    // 5. Payback Period (Initial Investment / Monthly Gain)
+    const paybackPeriod = totalMonthlyBenefit > 0
+      ? initialInvestment / totalMonthlyBenefit
+      : Infinity;
 
     setROIMetrics({
-      costSavings: timeSavingsValue + automationSavings,
-      timeSavings: benefitInputs.reducedResponseTime * 4.33,
-      efficiencyGains: accuracySavings,
-      riskReduction: riskSavings,
-      totalROI: annualROI,
+      costSavings: monthlyTimeSavings * timeHorizon,
+      timeSavings: benefitInputs.reducedResponseTime * 4.33 * timeHorizon,
+      efficiencyGains: monthlyAccuracySavings * timeHorizon,
+      riskReduction: monthlyRiskSavings * timeHorizon,
+      totalROI: horizonROI,
       paybackPeriod: paybackPeriod,
     });
   }, [costInputs, benefitInputs, timeHorizon]);
@@ -268,7 +278,7 @@ export function ROICalculator({ className = "" }: ROICalculatorProps) {
 
             <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <span className="text-slate-300">Annual ROI</span>
+                <span className="text-slate-300">Analysis ROI ({timeHorizon}m)</span>
                 <span className={`text-xl font-bold ${getROIColor(roiMetrics.totalROI)}`}>
                   {formatPercentage(roiMetrics.totalROI)}
                 </span>

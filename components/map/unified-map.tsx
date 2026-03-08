@@ -3,64 +3,15 @@
 import React, { useState } from "react";
 import { MapboxMap } from "./mapbox-map";
 import { Layers, Map, Eye, EyeOff, AlertTriangle, Wrench } from "lucide-react";
+import { useMapData } from "./map-data-context";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 type MapView = "crime" | "311" | "unified";
 
-// Simple ToggleGroup component since we don't have the dependency
-function ToggleGroup({ children, value, onValueChange, className = "" }: {
-  children: React.ReactNode;
-  value: MapView;
-  onValueChange: (value: MapView) => void;
-  className?: string;
-}) {
-  return (
-    <div className={`inline-flex bg-slate-100 rounded-lg p-1 ${className}`}>
-      {React.Children.map(children, (child) => {
-        if (React.isValidElement(child)) {
-          return React.cloneElement(child as React.ReactElement<any>, {
-            isActive: (child.props as any).value === value,
-            onClick: () => onValueChange((child.props as any).value),
-          });
-        }
-        return child;
-      })}
-    </div>
-  );
-}
+interface UnifiedMapProps { }
 
-function ToggleGroupItem({
-  value,
-  isActive,
-  onClick,
-  children,
-  className = ""
-}: {
-  value: MapView;
-  isActive?: boolean;
-  onClick?: () => void;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <button
-      value={value}
-      onClick={onClick}
-      className={`px-3 py-1 text-xs font-medium rounded transition-colors ${isActive
-          ? "bg-slate-900 text-white"
-          : "text-slate-600 hover:text-slate-900 hover:bg-slate-200"
-        } ${className}`}
-    >
-      {children}
-    </button>
-  );
-}
-
-interface UnifiedMapProps {
-  crimeData?: any[];
-  requests311?: any[];
-}
-
-export function UnifiedMap({ crimeData = [], requests311 = [] }: UnifiedMapProps) {
+export function UnifiedMap({ }: UnifiedMapProps) {
+  const { crimeData, requests311 } = useMapData();
   const [activeView, setActiveView] = useState<MapView>("unified");
   const [showCrime, setShowCrime] = useState(true);
   const [show311, setShow311] = useState(true);
@@ -72,17 +23,18 @@ export function UnifiedMap({ crimeData = [], requests311 = [] }: UnifiedMapProps
         <div className="bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-2">
           {/* View Toggle */}
           <ToggleGroup
+            type="single"
             value={activeView}
-            onValueChange={setActiveView}
-            className="mb-2"
+            onValueChange={(val) => val && setActiveView(val as MapView)}
+            className="mb-2 bg-slate-100 rounded-lg p-1 dark:bg-slate-800"
           >
-            <ToggleGroupItem value="crime">
+            <ToggleGroupItem value="crime" className="text-xs px-3 py-1">
               Crime
             </ToggleGroupItem>
-            <ToggleGroupItem value="311">
+            <ToggleGroupItem value="311" className="text-xs px-3 py-1">
               311
             </ToggleGroupItem>
-            <ToggleGroupItem value="unified">
+            <ToggleGroupItem value="unified" className="text-xs px-3 py-1">
               Unified
             </ToggleGroupItem>
           </ToggleGroup>
@@ -93,8 +45,8 @@ export function UnifiedMap({ crimeData = [], requests311 = [] }: UnifiedMapProps
               <button
                 onClick={() => setShowCrime(!showCrime)}
                 className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${showCrime
-                    ? "bg-red-500/20 text-red-400 border border-red-500/30"
-                    : "bg-slate-700 text-slate-400 border border-slate-600"
+                  ? "bg-red-500/20 text-red-400 border border-red-500/30"
+                  : "bg-slate-700 text-slate-400 border border-slate-600"
                   }`}
                 title={showCrime ? "Hide Crime Layer" : "Show Crime Layer"}
               >
@@ -104,8 +56,8 @@ export function UnifiedMap({ crimeData = [], requests311 = [] }: UnifiedMapProps
               <button
                 onClick={() => setShow311(!show311)}
                 className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors ${show311
-                    ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                    : "bg-slate-700 text-slate-400 border border-slate-600"
+                  ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                  : "bg-slate-700 text-slate-400 border border-slate-600"
                   }`}
                 title={show311 ? "Hide 311 Layer" : "Show 311 Layer"}
               >

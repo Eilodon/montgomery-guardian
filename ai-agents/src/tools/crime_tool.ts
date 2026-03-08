@@ -1,15 +1,8 @@
 // ai-agents/src/tools/crime_tool.ts
 import axios from 'axios';
+import { logger } from '../utils/logger';
 
-// Thêm Type cho Response để LLM không bị ảo giác
-export interface ToolResponse {
-  success: boolean;
-  data: any[] | null;
-  total: number;
-  source: string;
-  error?: string;
-  message?: string;
-}
+import type { ToolResponse } from '../types/agents';
 
 export async function queryCrimeTool(params: {
   neighborhood?: string;
@@ -18,16 +11,16 @@ export async function queryCrimeTool(params: {
 }): Promise<ToolResponse> {
   try {
     const backendUrl = process.env.BACKEND_API_URL || 'http://localhost:8000';
-    
+
     // Build query parameters
     const queryParams: any = {
       limit: params.limit || 10,
     };
-    
+
     if (params.neighborhood) {
       queryParams.neighborhood = params.neighborhood;
     }
-    
+
     // Make request to backend API
     const response = await axios.get(`${backendUrl}/api/v1/crime`, {
       params: queryParams,
@@ -36,21 +29,18 @@ export async function queryCrimeTool(params: {
         'Content-Type': 'application/json',
       }
     });
-    
-    console.log('Crime tool response:', { 
-      dataCount: response.data.data?.length || 0,
-      total: response.data.total 
-    });
-    
-    return { 
-      success: true, 
-      data: response.data.data || [], 
-      total: response.data.total || 0, 
-      source: 'backend_api' 
+
+    logger.toolResult('Crime', response.data.data?.length || 0, response.data.total);
+
+    return {
+      success: true,
+      data: response.data.data || [],
+      total: response.data.total || 0,
+      source: 'backend_api'
     };
-    
+
   } catch (error) {
-    console.error('[CIRCUIT BREAKER] Crime tool failed:', error);
+    logger.error('CrimeTool', error);
     // THỢ RÈN: Tuyệt đối không dùng getMockCrimeData(). Báo lỗi thẳng cho LLM.
     return {
       success: false,

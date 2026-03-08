@@ -11,8 +11,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from api.main import app
 
-# Montgomery Guardian API Key for testing
-API_KEY = "mg_secret_key_2026_change_me"
+# Montgomery Guardian API Key for testing - should be provided via environment
+API_KEY = os.environ.get("API_KEY", "test_secret_key_32_chars_long_1234")
 client = TestClient(app, headers={"X-API-Key": API_KEY})
 
 class TestHealthEndpoint:
@@ -63,7 +63,7 @@ class TestCrimeEndpoint:
 class TestRequests311Endpoint:
     def test_get_311_requests(self):
         """Test getting 311 service requests"""
-        response = client.get("/api/v1/requests-311?limit=5")
+        response = client.get("/api/v1/requests?limit=5")
         assert response.status_code == 200
         data = response.json()
         
@@ -82,7 +82,7 @@ class TestRequests311Endpoint:
 
     def test_get_311_with_service_type_filter(self):
         """Test getting 311 requests with service type filter"""
-        response = client.get("/api/v1/requests-311?service_type=pothole&limit=5")
+        response = client.get("/api/v1/requests?service_type=pothole&limit=5")
         assert response.status_code == 200
         data = response.json()
         assert "data" in data
@@ -90,7 +90,7 @@ class TestRequests311Endpoint:
 
     def test_get_311_with_status_filter(self):
         """Test getting 311 requests with status filter"""
-        response = client.get("/api/v1/requests-311?status=open&limit=5")
+        response = client.get("/api/v1/requests?status=open&limit=5")
         assert response.status_code == 200
         data = response.json()
         assert "data" in data
@@ -132,6 +132,30 @@ class TestPredictionsEndpoint:
         assert "data" in data
         assert "total" in data
 
+    def test_get_heatmap(self):
+        """Test getting heatmap data (prefixed route)"""
+        response = client.get("/api/v1/predictions/heatmap")
+        assert response.status_code == 200
+        data = response.json()
+        assert "data" in data
+
+    def test_simulate_impact(self):
+        """Test simulating impact (prefixed route)"""
+        payload = {
+            "patrolCoverage": 80,
+            "backlogLevel": 20
+        }
+        response = client.post("/api/v1/predictions/simulate", json=payload)
+        assert response.status_code == 200
+        data = response.json()
+        assert "projectedImpact" in data
+
+    def test_get_shap_explainability(self):
+        """Test getting SHAP data (prefixed route)"""
+        response = client.get("/api/v1/predictions/explain")
+        assert response.status_code == 200
+        assert "features" in response.json()
+
 class TestAlertsEndpoint:
     def test_get_alerts(self):
         """Test getting safety alerts"""
@@ -165,7 +189,8 @@ class TestChatEndpoint:
         """Test chat functionality with AI agents"""
         payload = {
             "message": "What is the current crime situation in Downtown?",
-            "agent_type": "safety_intel"
+            "agent_type": "safety_intel",
+            "language": "en"
         }
         response = client.post("/api/v1/chat", json=payload)
         assert response.status_code == 200
@@ -178,6 +203,22 @@ class TestChatEndpoint:
         for field in required_fields:
             assert field in message
         assert message["role"] == "assistant"
+
+    def test_chat_with_history_and_context(self):
+        """Test chat with history and user location context"""
+        payload = {
+            "message": "Tell me more about the first point",
+            "history": [
+                {"role": "user", "content": "What are the common crimes here?"},
+                {"role": "assistant", "content": "Common crimes include property theft and burglary."}
+            ],
+            "userLocation": {"lat": 32.3617, "lng": -86.2792},
+            "language": "vi"
+        }
+        response = client.post("/api/v1/chat", json=payload)
+        assert response.status_code == 200
+        data = response.json()
+        assert "message" in data
 
     def test_chat_without_agent_type(self):
         """Test chat without specifying agent type (auto-detection)"""
@@ -211,8 +252,8 @@ class TestVisionEndpoint:
         files = {"image": ("test.jpg", img_bytes, "image/jpeg")}
         data = {
             "description": "Large pothole in the road",
-            "location_lat": "32.3617",
-            "location_lon": "-86.2792"
+            "lat": "32.3617",
+            "lng": "-86.2792"
         }
         
         response = client.post("/api/v1/vision/analyze", files=files, data=data)

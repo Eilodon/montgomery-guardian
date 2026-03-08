@@ -62,6 +62,13 @@ class RiskPrediction(BaseModel):
     shapFeatures: Dict[str, float]  # feature importance
     generatedAt: datetime
 
+class RiskZone(BaseModel):
+    level: Literal['critical', 'high', 'medium', 'low']
+    count: int
+
+class RiskZonesResponse(BaseModel):
+    data: list[RiskZone]
+
 class VisionAnalysisResult(BaseModel):
     incidentType: str
     severity: Literal['high', 'medium', 'low']
@@ -119,10 +126,10 @@ class IncidentBreakdown(BaseModel):
 class DistrictData(BaseModel):
     id: str
     name: str
-    score: float
-    crimes: int
-    trend: Literal['up', 'down', 'stable']
-    incidents: list[IncidentBreakdown]
+    grade: Literal['A', 'B', 'C', 'D', 'F']
+    crimeIndex: float
+    backlog311: int
+    trend: float
 
 class DistrictsResponse(BaseModel):
     total: int

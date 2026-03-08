@@ -11,29 +11,20 @@ const zoneConfig: Record<RiskZone["level"], { label: string; color: string; bgCo
 };
 
 export function RiskZoneRibbon({ zones }: RiskZoneRibbonProps) {
-  const [animatedZones, setAnimatedZones] = useState(zones);
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  // Simulate real-time updates
+  // Clock tick only for "last updated" display UX
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTime(new Date());
-      
-      // Simulate risk zone changes
-      setAnimatedZones(prevZones => 
-        prevZones.map(zone => ({
-          ...zone,
-          count: Math.max(0, zone.count + Math.floor(Math.random() * 3) - 1) // Random fluctuation
-        }))
-      );
-    }, 5000); // Update every 5 seconds
+    }, 1000);
 
     return () => clearInterval(interval);
   }, []);
 
   // Calculate total for percentage
-  const totalZones = animatedZones.reduce((sum, zone) => sum + zone.count, 0);
-  const maxZoneCount = Math.max(...animatedZones.map(z => z.count));
+  const totalZones = zones.reduce((sum, zone) => sum + zone.count, 0);
+  const maxZoneCount = Math.max(...zones.map(z => z.count));
 
   return (
     <div className="absolute bottom-0 left-0 right-0 z-20 h-[60px] bg-slate-900/95 backdrop-blur-sm border-t border-slate-700">
@@ -46,23 +37,20 @@ export function RiskZoneRibbon({ zones }: RiskZoneRibbonProps) {
             {currentTime.toLocaleTimeString()}
           </span>
         </div>
-        
+
         <div className="flex items-center gap-4">
-          {animatedZones.map((zone) => {
+          {zones.map((zone) => {
             const config = zoneConfig[zone.level];
             const percentage = totalZones > 0 ? (zone.count / totalZones) * 100 : 0;
             const isHighest = zone.count === maxZoneCount;
-            
+
             return (
-              <div 
-                key={zone.level} 
-                className={`flex items-center gap-2 px-3 py-1 rounded-lg border transition-all duration-500 ${
-                  config.bgColor
-                } ${
-                  config.borderColor
-                } ${
-                  isHighest ? 'ring-2 ring-offset-0 ring-offset-slate-900' : ''
-                }`}
+              <div
+                key={zone.level}
+                className={`flex items-center gap-2 px-3 py-1 rounded-lg border transition-all duration-500 ${config.bgColor
+                  } ${config.borderColor
+                  } ${isHighest ? 'ring-2 ring-offset-0 ring-offset-slate-900' : ''
+                  }`}
               >
                 <div className="flex flex-col items-center">
                   <span className={`text-xs font-bold ${config.color}`}>
@@ -77,7 +65,7 @@ export function RiskZoneRibbon({ zones }: RiskZoneRibbonProps) {
                     </span>
                   </div>
                 </div>
-                
+
                 {/* Animated indicator for highest risk */}
                 {isHighest && (
                   <div className="relative">
@@ -89,15 +77,15 @@ export function RiskZoneRibbon({ zones }: RiskZoneRibbonProps) {
             );
           })}
         </div>
-        
+
         {/* Risk Level Indicator */}
         <div className="flex items-center gap-2">
           <span className="text-xs text-slate-400">Overall Risk:</span>
           <div className="flex items-center gap-1">
-            {animatedZones.map((zone, index) => {
+            {zones.map((zone, index) => {
               const config = zoneConfig[zone.level];
               const width = zone.count > 0 ? `${(zone.count / totalZones) * 100}%` : '0%';
-              
+
               return (
                 <div
                   key={zone.level}
@@ -111,12 +99,12 @@ export function RiskZoneRibbon({ zones }: RiskZoneRibbonProps) {
           </div>
         </div>
       </div>
-      
+
       {/* Hover Details */}
       <div className="absolute bottom-full left-0 right-0 bg-slate-800 border border-slate-600 rounded-t-lg p-3 opacity-0 hover:opacity-100 transition-opacity duration-200 pointer-events-none">
         <div className="text-xs text-slate-300 mb-2">Risk Distribution Details:</div>
         <div className="grid grid-cols-4 gap-4 text-xs">
-          {animatedZones.map((zone) => {
+          {zones.map((zone) => {
             const config = zoneConfig[zone.level];
             return (
               <div key={zone.level} className="flex flex-col items-center">

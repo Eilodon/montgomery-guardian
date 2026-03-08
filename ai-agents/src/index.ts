@@ -5,8 +5,9 @@ dotenv.config();
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import { orchestratorFlow } from './agents/orchestrator';
-import { visionAnalysisFlow } from './agents/vision_agent';
+import { orchestratorFlow, ai } from './agents/orchestrator';
+import { guardedVisionAnalysis } from './agents/vision_guard';
+import { logger } from './utils/logger';
 
 
 const app = express();
@@ -15,10 +16,9 @@ const PORT = process.env.PORT || 3001;
 // Security middleware
 app.use(helmet());
 
-// API Authentication middleware
 const API_KEY = process.env.API_KEY;
 if (!API_KEY) {
-  console.warn('⚠️ API_KEY not set in .env for ai-agents');
+  logger.info('System', '⚠️ API_KEY not set in .env for ai-agents');
 }
 
 const authMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -47,7 +47,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Request logging middleware
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  logger.info('Request', `${req.method} ${req.path}`);
   next();
 });
 
@@ -64,18 +64,18 @@ app.get('/health', (_, res) => {
 // Chat endpoint - main orchestrator flow
 app.post('/chat', async (req, res) => {
   try {
-    console.log('Chat request received:', { body: req.body });
+    logger.info('Chat', `Request received: len=${req.body.message?.length || 0}`);
 
     const result = await orchestratorFlow(req.body);
 
-    console.log('Chat response generated:', {
+    logger.info('Chat', {
       agentType: result.agentType,
       contentLength: result.content?.length || 0
     });
 
     res.json(result);
   } catch (err: any) {
-    console.error('Chat endpoint error:', err);
+    logger.error('ChatEndpoint', err);
 
     // Graceful error handling
     const errorResponse = {
@@ -92,7 +92,7 @@ app.post('/chat', async (req, res) => {
 // Vision analysis endpoint
 app.post('/vision/analyze', async (req, res) => {
   try {
-    console.log('Vision analysis request received');
+    logger.info('Vision', 'Analysis request received');
 
     const { imageBase64, mimeType, lat, lng } = req.body;
 
@@ -103,16 +103,16 @@ app.post('/vision/analyze', async (req, res) => {
       });
     }
 
-    const result = await visionAnalysisFlow({ imageBase64, mimeType, lat, lng });
+    const result = await guardedVisionAnalysis(ai, { imageBase64, mimeType, lat, lng });
 
-    console.log('Vision analysis completed:', {
+    logger.info('Vision', {
       incidentType: result.incidentType,
       confidence: result.confidence
     });
 
     res.json(result);
   } catch (err: any) {
-    console.error('Vision analysis error:', err);
+    logger.error('VisionEndpoint', err);
 
     // Graceful error handling
     const errorResponse = {
@@ -142,7 +142,7 @@ app.use('*', (_, res) => {
 
 // Global error handler
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error('Global error handler:', err);
+  logger.error('Global', err);
 
   res.status(500).json({
     error: 'Internal server error',
@@ -152,20 +152,17 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 AI Agents service running on port ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/health`);
-  console.log(`💬 Chat endpoint: http://localhost:${PORT}/chat`);
-  console.log(`👁️  Vision endpoint: http://localhost:${PORT}/vision/analyze`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  logger.info('Server', `🚀 AI Agents service running on port ${PORT}`);
+  logger.info('Server', `🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
+  logger.info('System', 'SIGTERM received, shutting down');
   process.exit(0);
 });
 
 process.on('SIGINT', () => {
-  console.log('SIGINT received, shutting down gracefully');
+  logger.info('System', 'SIGINT received, shutting down');
   process.exit(0);
 });

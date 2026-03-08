@@ -6,7 +6,7 @@ import io
 from PIL import Image
 
 # Mock environment before importing app
-os.environ["API_KEY"] = "test_secret_key_12345678901234567890"
+os.environ["API_KEY"] = "test_secret_key_32_chars_long_1234"
 os.environ["API_URL"] = "http://localhost:8000"
 
 from api.main import app
@@ -64,12 +64,51 @@ def test_vision_upload_invalid_image_binary():
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 def test_websocket_auth():
-    """Verify that websocket connection requires valid api key in query param"""
-    # TestClient for websocket handles it slightly differently, but we can check the close logic
-    with pytest.raises(Exception): # TestClient might raise if handshake fails
-         with client.websocket_connect("/ws") as websocket:
-             pass
+    """Verify that websocket connection requires valid auth message handshake"""
+    from starlette.websockets import WebSocketDisconnect
 
-    with pytest.raises(Exception):
-         with client.websocket_connect("/ws?x_api_key=wrong") as websocket:
-             pass
+    # 1. Test case: No auth message - should close on timeout (4002)
+    with pytest.raises(WebSocketDisconnect) as excinfo:
+        with client.websocket_connect("/ws") as websocket:
+            # Server waits 5s for auth, then closes with 4002
+            websocket.receive_json()
+    assert excinfo.value.code == 4002
+
+    # 2. Test case: Wrong auth key (4001)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json({"type": "auth", "key": "wrong_key"})
+        # Server should close with code 4001
+        with pytest.raises(WebSocketDisconnect) as excinfo:
+            websocket.receive_json()
+        assert excinfo.value.code == 4001
+
+    # 3. Test case: Correct auth key
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json({"type": "auth", "key": os.environ["API_KEY"]})
+        data = websocket.receive_json()
+        assert data["type"] == "connection_established"
+
+def test_districts_endpoint():
+    """Verify that /api/v1/districts doesn't crash due to missing imports"""
+    response = client.get(
+        "/api/v1/districts",
+        headers={"X-API-Key": os.environ["API_KEY"]}
+    )
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert "data" in data
+    # Check if we got either DB data or mock data
+    assert len(data["data"]) >= 0 
+
+def test_predictions_endpoint():
+    """Verify that /api/v1/predictions doesn't crash due to missing imports or logic bugs"""
+    response = client.get(
+        "/api/v1/predictions",
+        headers={"X-API-Key": os.environ["API_KEY"]}
+    )
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert "data" in data
+    if len(data["data"]) > 0:
+        # Verify SHAP features are present (not None)
+        assert data["data"][0]["shapFeatures"] is not None

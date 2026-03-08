@@ -66,18 +66,27 @@ class RAGService:
             # Add relevance explanation
             relevance_explanation = self._explain_relevance(result, query)
             
-            # Add actionability score
+            # Tính trước, lưu vào biến cục bộ
             actionability = self._calculate_actionability(result)
-            
-            # Add freshness score
             freshness = self._calculate_freshness(result)
             
+            # Truyền các giá trị đã tính — không để _calculate_combined_score tự lookup
+            combined = self._calculate_combined_score(
+                similarity=result.get('similarity_score', 0),
+                actionability=actionability,
+                freshness=freshness,
+                priority=result.get('metadata', {}).get('priority', 'medium')
+            )
+            
             enhanced_result = {
-                **result,
+                'id': result.get('id', ''),
+                'document': result.get('document', result.get('content', '')),
+                'metadata': result.get('metadata', {}),
+                'similarity_score': result.get('similarity_score', 0),
                 'relevance_explanation': relevance_explanation,
                 'actionability_score': actionability,
                 'freshness_score': freshness,
-                'combined_score': self._calculate_combined_score(result, query)
+                'combined_score': combined
             }
             
             enhanced.append(enhanced_result)
@@ -86,92 +95,24 @@ class RAGService:
         enhanced.sort(key=lambda x: x['combined_score'], reverse=True)
         
         return enhanced
-    
-    def _explain_relevance(self, result: Dict[str, Any], query: str) -> str:
-        """Explain why a result is relevant to the query"""
-        content = result.get('content', '').lower()
-        query_lower = query.lower()
-        
-        # Check for direct keyword matches
-        query_words = query_lower.split()
-        matches = [word for word in query_words if word in content]
-        
-        if matches:
-            return f"Contains {len(matches)} matching keywords: {', '.join(matches[:3])}"
-        
-        # Check for semantic relevance based on category
-        category = result.get('metadata', {}).get('category', '')
-        if category == 'emergency' and any(word in query_lower for word in ['emergency', '911', 'help', 'urgent']):
-            return "Emergency information relevant to urgent queries"
-        elif category == 'services' and any(word in query_lower for word in ['service', 'report', 'request', '311']):
-            return "City service information for municipal requests"
-        elif category == 'safety' and any(word in query_lower for word in ['safe', 'danger', 'crime', 'security']):
-            return "Safety information relevant to security concerns"
-        
-        return f"Semantically relevant (similarity: {result.get('similarity_score', 0):.2f})"
-    
-    def _calculate_actionability(self, result: Dict[str, Any]) -> float:
-        """Calculate how actionable the information is"""
-        content = result.get('content', '').lower()
-        category = result.get('metadata', {}).get('category', '')
-        
-        actionability = 0.5  # Base score
-        
-        # Boost for actionable content
-        if any(word in content for word in ['call', 'contact', 'report', 'visit', 'go to', 'use']):
-            actionability += 0.2
-        
-        # Boost for service information
-        if category == 'services':
-            actionability += 0.2
-        
-        # Boost for emergency procedures
-        if category == 'emergency' and any(word in content for word in ['should', 'do', 'steps', 'procedure']):
-            actionability += 0.1
-        
-        return min(actionability, 1.0)
-    
-    def _calculate_freshness(self, result: Dict[str, Any]) -> float:
-        """Calculate freshness score based on creation time"""
-        created_at = result.get('metadata', {}).get('created_at', '')
-        if not created_at:
-            return 0.5
-        
-        try:
-            created_date = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
-            now = datetime.now()
-            days_old = (now - created_date).days
-            
-            # Newer content gets higher score
-            if days_old <= 7:
-                return 1.0
-            elif days_old <= 30:
-                return 0.8
-            elif days_old <= 90:
-                return 0.6
-            else:
-                return 0.4
-        except:
-            return 0.5
-    
-    def _calculate_combined_score(self, result: Dict[str, Any], query: str) -> float:
-        """Calculate combined relevance score"""
-        similarity = result.get('similarity_score', 0)
-        actionability = result.get('actionability_score', 0.5)
-        freshness = result.get('freshness_score', 0.5)
-        priority = result.get('metadata', {}).get('priority', 'medium')
-        
-        # Priority weights
+
+    def _calculate_combined_score(
+        self,
+        similarity: float,
+        actionability: float,
+        freshness: float,
+        priority: str
+    ) -> float:
+        """Tính combined score từ pre-calculated values — không lookup từ dict."""
         priority_weights = {'high': 1.2, 'medium': 1.0, 'low': 0.8}
-        priority_weight = priority_weights.get(priority, 1.0)
-        
-        # Combined score with weighted components
+        weight = priority_weights.get(priority, 1.0)
+
         combined = (
-            similarity * 0.5 +           # 50% semantic similarity
-            actionability * 0.3 +         # 30% actionability
-            freshness * 0.2                # 20% freshness
-        ) * priority_weight                 # Priority multiplier
-        
+            similarity    * 0.5 +
+            actionability * 0.3 +
+            freshness     * 0.2
+        ) * weight
+
         return min(combined, 1.0)
     
     def get_context_for_query(self, query: str, max_context_length: int = 2000) -> str:
@@ -188,7 +129,7 @@ class RAGService:
             current_length = 0
             
             for result in search_results['results']:
-                content = result.get('content', '')
+                content = result.get('document', '')
                 metadata = result.get('metadata', {})
                 title = metadata.get('title', 'Unknown')
                 source = metadata.get('source', 'Unknown')

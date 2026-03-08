@@ -94,14 +94,14 @@ CREATE TRIGGER update_service_timestamp
 
 -- Insert sample data for testing (will be replaced by ETL)
 INSERT INTO crime_incidents (incident_id, incident_type, description, location_lat, location_lng, incident_date, district, severity) VALUES
-('MCPD-2024-001', 'Assault', 'Simple assault reported downtown', 39.1334, -77.1817, NOW() - INTERVAL '2 days', 'Downtown', 'medium'),
-('MCPD-2024-002', 'Burglary', 'Residential burglary in progress', 39.1450, -77.2010, NOW() - INTERVAL '1 day', 'Bethesda', 'high'),
-('MCPD-2024-003', 'Theft', 'Petty theft from vehicle', 39.0900, -77.1650, NOW() - INTERVAL '3 hours', 'Silver Spring', 'low');
+('MCPD-2024-001', 'Assault', 'Simple assault reported downtown', 32.3617, -86.2792, NOW() - INTERVAL '2 days', 'Downtown', 'medium'),
+('MCPD-2024-002', 'Burglary', 'Residential burglary in progress', 32.3520, -86.2850, NOW() - INTERVAL '1 day', 'Old Cloverdale', 'high'),
+('MCPD-2024-003', 'Theft', 'Petty theft from vehicle', 32.3750, -86.2600, NOW() - INTERVAL '3 hours', 'Capitol Heights', 'low');
 
 INSERT INTO service_requests_311 (request_id, service_type, description, location_lat, location_lng, request_date, district, priority) VALUES
-('311-2024-001', 'Pothole Repair', 'Large pothole on main street', 39.1334, -77.1817, NOW() - INTERVAL '1 day', 'Downtown', 'high'),
-('311-2024-002', 'Trash Collection', 'Missed trash collection', 39.1450, -77.2010, NOW() - INTERVAL '2 days', 'Bethesda', 'normal'),
-('311-2024-003', 'Graffiti Removal', 'Graffiti on public wall', 39.0900, -77.1650, NOW() - INTERVAL '4 hours', 'Silver Spring', 'low');
+('311-2024-001', 'Pothole Repair', 'Large pothole on main street', 32.3617, -86.2792, NOW() - INTERVAL '1 day', 'Downtown', 'high'),
+('311-2024-002', 'Trash Collection', 'Missed trash collection', 32.3520, -86.2850, NOW() - INTERVAL '2 days', 'Old Cloverdale', 'normal'),
+('311-2024-003', 'Graffiti Removal', 'Graffiti on public wall', 32.3750, -86.2600, NOW() - INTERVAL '4 hours', 'Capitol Heights', 'low');
 
 -- Create views for common queries
 CREATE OR REPLACE VIEW v_active_crimes AS

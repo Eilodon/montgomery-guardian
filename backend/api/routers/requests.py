@@ -11,7 +11,7 @@ import json
 
 router = APIRouter()
 
-@router.get("/requests-311", response_model=Requests311Response)
+@router.get("/requests", response_model=Requests311Response)
 async def get_311_requests(
     service_type: Optional[str] = Query(None, description="Filter by service type"),
     status: Optional[str] = Query(None, description="Filter by status"),
@@ -71,7 +71,9 @@ async def get_311_requests(
             requests.append(request)
         
         # Cache the results for 5 minutes
-        await cache_data(cache_key, {"data": requests, "total": len(requests)}, ttl=300)
+        # Serialize Pydantic objects to dicts for JSON storage
+        serializable_requests = [r.model_dump() for r in requests]
+        await cache_data(cache_key, {"data": serializable_requests, "total": len(requests)}, ttl=300)
         
         return Requests311Response(data=requests, total=len(requests))
         

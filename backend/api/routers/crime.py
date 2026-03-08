@@ -2,16 +2,19 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import Optional, List
-from ..models.schemas import CrimeResponse, CrimeIncident, DistrictsResponse, DistrictData
+from ..models import schemas
+from ..models.crime import CrimeIncident as DBCrimeIncident
 from ..core.database import get_db
 from ..core.redis import get_cached_data, cache_data
 from etl.arcgis_client import fetch_arcgis_dataset
 from datetime import datetime
+from sqlalchemy import func
 import json
+import random
 
 router = APIRouter()
 
-@router.get("/crime", response_model=CrimeResponse)
+@router.get("/crime", response_model=schemas.CrimeResponse)
 async def get_crime_incidents(
     neighborhood: Optional[str] = Query(None, description="Filter by neighborhood"),
     limit: int = Query(100, ge=1, le=1000, description="Number of records to return"),
@@ -49,7 +52,7 @@ async def get_crime_incidents(
         # Convert DataFrame to list of CrimeIncident objects
         incidents = []
         for _, row in df.iterrows():
-            incident = CrimeIncident(
+            incident = schemas.CrimeIncident(
                 id=str(row.get('objectid', row.get('id', ''))),
                 type=_map_crime_type(row.get('crimetype', 'other')),
                 latitude=float(row.get('latitude', 0.0)),
@@ -64,14 +67,14 @@ async def get_crime_incidents(
         # Cache the results for 5 minutes
         await cache_data(cache_key, {"data": incidents, "total": len(incidents)}, ttl=300)
         
-        return CrimeResponse(data=incidents, total=len(incidents))
+        return schemas.CrimeResponse(data=incidents, total=len(incidents))
         
     except Exception as e:
         print(f"❌ Crime data fetch error: {e}")
         mock_incidents = _get_mock_crime_data(neighborhood, limit)
-        return CrimeResponse(data=mock_incidents, total=len(mock_incidents))
+        return schemas.CrimeResponse(data=mock_incidents, total=len(mock_incidents))
 
-@router.get("/districts", response_model=DistrictsResponse)
+@router.get("/districts", response_model=schemas.DistrictsResponse)
 async def get_district_stats(db: Session = Depends(get_db)):
     """
     Get crime statistics grouped by district/neighborhood.
@@ -80,67 +83,59 @@ async def get_district_stats(db: Session = Depends(get_db)):
     try:
         # Get count by neighborhood
         neighborhood_counts = db.query(
-            CrimeIncident.neighborhood,
-            func.count(CrimeIncident.id).label('count')
-        ).group_by(CrimeIncident.neighborhood).order_by(func.count(CrimeIncident.id).desc()).all()
+            DBCrimeIncident.neighborhood,
+            func.count(DBCrimeIncident.id).label('count')
+        ).group_by(DBCrimeIncident.neighborhood).order_by(func.count(DBCrimeIncident.id).desc()).all()
         
         districts = []
         for neighborhood, count in neighborhood_counts:
             # Calculate mock safety score based on count (more crimes = lower score)
             score = max(30, 95 - (count / 10))
             
-            # Incident breakdown (simulated for now, would be a separate query in prod)
-            incidents = [
-                {"type": "Property", "count": int(count * 0.6), "color": "bg-blue-500"},
-                {"type": "Violent", "count": int(count * 0.1), "color": "bg-red-500"},
-                {"type": "Other", "count": int(count * 0.3), "color": "bg-slate-500"},
-            ]
+            # Map score to grade
+            if score >= 90: grade = 'A'
+            elif score >= 80: grade = 'B'
+            elif score >= 70: grade = 'C'
+            elif score >= 60: grade = 'D'
+            else: grade = 'F'
             
-            districts.append(DistrictData(
+            districts.append(schemas.DistrictData(
                 id=neighborhood.lower().replace(" ", "_"),
                 name=neighborhood,
-                score=score,
-                crimes=count,
-                trend="stable" if random.random() > 0.3 else ("up" if random.random() > 0.5 else "down"),
-                incidents=incidents
+                grade=grade,
+                crimeIndex=float(count), # simplification
+                backlog311=random.randint(5, 50),
+                trend=round(random.uniform(-5.0, 5.0), 1)
             ))
             
         # If no districts in DB, use mock set
         if not districts:
             districts = _get_mock_districts()
             
-        return DistrictsResponse(data=districts, total=len(districts))
+        return schemas.DistrictsResponse(data=districts, total=len(districts))
         
     except Exception as e:
         print(f"❌ Districts endpoint error: {e}")
-        return DistrictsResponse(data=_get_mock_districts(), total=0)
+        return schemas.DistrictsResponse(data=_get_mock_districts(), total=0)
 
-def _get_mock_districts() -> List[DistrictData]:
+def _get_mock_districts() -> List[schemas.DistrictData]:
     """Mock districts for demo purposes"""
     return [
-        DistrictData(
+        schemas.DistrictData(
             id="downtown",
             name="Downtown",
-            score=72.5,
-            crimes=45,
-            trend="down",
-            incidents=[
-                {"type": "Property", "count": 28, "color": "bg-blue-500"},
-                {"type": "Violent", "count": 5, "color": "bg-red-500"},
-                {"type": "Other", "count": 12, "color": "bg-slate-500"},
-            ]
+            grade="C",
+            crimeIndex=45.0,
+            backlog311=12,
+            trend=-1.2
         ),
-        DistrictData(
+        schemas.DistrictData(
             id="capitol_heights",
             name="Capitol Heights",
-            score=84.2,
-            crimes=22,
-            trend="stable",
-            incidents=[
-                {"type": "Property", "count": 12, "color": "bg-blue-500"},
-                {"type": "Violent", "count": 2, "color": "bg-red-500"},
-                {"type": "Other", "count": 8, "color": "bg-slate-500"},
-            ]
+            grade="B",
+            crimeIndex=22.5,
+            backlog311=5,
+            trend=0.5
         ),
     ]
 
@@ -188,10 +183,10 @@ def _parse_timestamp(date_str: str) -> datetime:
             # Fallback to current time
             return datetime.now()
 
-def _get_mock_crime_data(neighborhood: Optional[str], limit: int) -> List[CrimeIncident]:
+def _get_mock_crime_data(neighborhood: Optional[str], limit: int) -> List[schemas.CrimeIncident]:
     """Mock data for demo purposes"""
     mock_data = [
-        CrimeIncident(
+        schemas.CrimeIncident(
             id="mock_1",
             type="property",
             latitude=32.3617,
@@ -201,7 +196,7 @@ def _get_mock_crime_data(neighborhood: Optional[str], limit: int) -> List[CrimeI
             status="open",
             description="Burglary reported on Commerce Street"
         ),
-        CrimeIncident(
+        schemas.CrimeIncident(
             id="mock_2",
             type="violent",
             latitude=32.3625,
@@ -211,7 +206,7 @@ def _get_mock_crime_data(neighborhood: Optional[str], limit: int) -> List[CrimeI
             status="investigating",
             description="Assault investigation ongoing"
         ),
-        CrimeIncident(
+        schemas.CrimeIncident(
             id="mock_3",
             type="drug",
             latitude=32.3600,
