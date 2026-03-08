@@ -262,66 +262,66 @@ def create_grid_predictions(model_data: dict, grid_bounds: Tuple[float, float, f
     return result_df
 
 def create_grid_predictions_ensemble(ensemble_model) -> pd.DataFrame:
-    """
-    Create risk predictions for all grid cells using ensemble model
-    """
+    """ THỢ RÈN: Vectorized Ensemble Grid Prediction """
     from datetime import datetime
-    logger.info("Creating ensemble predictions for Montgomery grid...")
+    logger.info("Creating vectorized ensemble predictions...")
     
-    # Define Montgomery area bounds
     min_lat, max_lat = 32.3000, 32.4000
     min_lng, max_lng = -86.3500, -86.2000
-    
-    # Grid resolution (approximately 500m)
     grid_size = 0.0045
     
-    predictions = []
+    # 1. Tạo ma trận Grid bằng Numpy
+    lats = np.arange(min_lat, max_lat, grid_size)
+    lngs = np.arange(min_lng, max_lng, grid_size)
+    grid_lats, grid_lngs = np.meshgrid(lats, lngs)
+    
+    df_grid = pd.DataFrame({
+        'latitude': grid_lats.flatten(),
+        'longitude': grid_lngs.flatten()
+    })
+    
     current_time = datetime.now()
+    df_grid['gridCellId'] = df_grid['latitude'].astype(str) + '_' + df_grid['longitude'].astype(str)
     
-    # Generate grid points
-    grid_lat = min_lat
-    while grid_lat <= max_lat:
-        grid_lng = min_lng
-        while grid_lng <= max_lng:
-            # Create features for this grid cell
-            features = {
-                'hour': current_time.hour,
-                'day_of_week': current_time.dayofweek,
-                'month': current_time.month,
-                'is_weekend': int(current_time.dayofweek in [5, 6]),
-                'is_night': int(current_time.hour in range(20, 24)),
-                'quarter': current_time.quarter,
-                'is_business_hours': int(current_time.hour in range(9, 18)),
-                'day_of_year': current_time.dayofyear,
-                'week_of_year': current_time.isocalendar().week,
-                'distance_to_downtown': np.sqrt(
-                    (grid_lat - 32.3617)**2 + (grid_lng - -86.2792)**2
-                ),
-                'crime_count_7d': np.random.randint(0, 20),  # Would need real-time data
-                'crime_count_30d': np.random.randint(0, 100),  # Would need real-time data
-                'open_311_count': np.random.randint(0, 15),  # Would need real-time data
-                'total_311_count_30d': np.random.randint(0, 50),  # Would need real-time data
-            }
-            
-            try:
-                prediction = ensemble_model.ensemble_predict(features)
-                predictions.append({
-                    'gridCellId': f"{grid_lat}_{grid_lng}",
-                    'latitude': grid_lat,
-                    'longitude': grid_lng,
-                    'riskLevel': prediction['riskLevel'],
-                    'confidenceScore': prediction['confidenceScore'],
-                    'shapFeatures': prediction['shapFeatures'],
-                    'generatedAt': current_time.isoformat()
-                })
-            except Exception as e:
-                logger.warning(f"Failed ensemble prediction for grid {grid_lat}_{grid_lng}: {e}")
-                continue
-            
-            grid_lng += grid_size
-        grid_lat += grid_size
+    # 2. Vectorized Feature Assignment (y hệt như XGBoost)
+    df_grid['hour'] = current_time.hour
+    df_grid['day_of_week'] = current_time.dayofweek
+    df_grid['month'] = current_time.month
+    df_grid['is_weekend'] = int(current_time.dayofweek in [5, 6])
+    df_grid['is_night'] = int(current_time.hour in range(20, 24))
+    df_grid['quarter'] = current_time.quarter
+    df_grid['is_business_hours'] = int(current_time.hour in range(9, 18))
+    df_grid['day_of_year'] = current_time.dayofyear
+    df_grid['week_of_year'] = current_time.isocalendar().week
     
-    return pd.DataFrame(predictions)
+    # Tính khoảng cách Vectorized
+    df_grid['distance_to_downtown'] = np.sqrt(
+        (df_grid['latitude'] - 32.3617)**2 + (df_grid['longitude'] - -86.2792)**2
+    )
+    
+    # Fill các cột missing bằng 0 (Vectorized) - lấy từ ensemble model scaler
+    if hasattr(ensemble_model.scaler, 'feature_names_in_'):
+        expected_cols = ensemble_model.scaler.feature_names_in_
+        for col in expected_cols:
+            if col not in df_grid.columns:
+                df_grid[col] = 0
+    else:
+        # Fallback: Add default features
+        default_features = ['crime_count_7d', 'crime_count_30d', 'open_311_count', 'total_311_count_30d',
+                          'crime_type_violent_7d', 'crime_type_property_7d', 'crime_type_drug_7d', 'crime_type_other_7d',
+                          'service_type_pothole_count', 'service_type_graffiti_count', 'service_type_trash_count',
+                          'service_type_flooding_count', 'service_type_overgrown_grass_count', 'service_type_other_count']
+        for col in default_features:
+            if col not in df_grid.columns:
+                df_grid[col] = 0
+    
+    # THỢ RÈN: Cần implement ensemble_predict_batch trong lớp EnsembleModel
+    predictions_df = ensemble_model.ensemble_predict_batch(df_grid)
+    
+    result_df = pd.concat([df_grid[['gridCellId', 'latitude', 'longitude']], predictions_df], axis=1)
+    result_df['generatedAt'] = current_time.isoformat()
+    
+    return result_df
 
 def generate_mock_data(n_samples: int = 1000) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """

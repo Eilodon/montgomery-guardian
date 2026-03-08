@@ -71,6 +71,98 @@ class EnsembleModel:
                 self.isolation_model = state.get('isolation_model', None)
                 self.weights = state.get('weights', self.weights)
     
+    def ensemble_predict_batch(self, feature_df: pd.DataFrame) -> pd.DataFrame:
+        """ THỢ RÈN: Batch Ensemble Prediction with Vectorized Operations """
+        try:
+            # THỢ RÈN: Khóa cấu trúc. Rút danh sách cột từ scaler đã train
+            expected_cols = self.scaler.feature_names_in_ 
+            
+            # Điền thiếu, cắt thừa, ép thứ tự (Vectorized)
+            for col in expected_cols:
+                if col not in feature_df.columns:
+                    feature_df[col] = 0.0 # Default fallback
+            
+            feature_df_aligned = feature_df[expected_cols] # Ép đúng thứ tự
+            
+            # Đã an toàn để transform (Vectorized)
+            scaled_features = self.scaler.transform(feature_df_aligned)
+            
+            # Vectorized predictions for all models
+            xgb_preds = self._predict_xgboost_batch(scaled_features)
+            lstm_preds = self._predict_lstm_batch(scaled_features)
+            isolation_preds = self._predict_isolation_batch(scaled_features)
+            
+            # Vectorized ensemble calculation
+            ensemble_scores = (
+                self.weights['xgboost'] * xgb_preds +
+                self.weights['lstm'] * lstm_preds +
+                self.weights['isolation_forest'] * isolation_preds
+            )
+            
+            # Vectorized risk level conversion
+            risk_levels = np.array([self._score_to_risk_level(score) for score in ensemble_scores])
+            
+            # Vectorized confidence calculation
+            confidences = np.array([
+                self._calculate_confidence(xgb, lstm, isolation) 
+                for xgb, lstm, isolation in zip(xgb_preds, lstm_preds, isolation_preds)
+            ])
+            
+            # Return DataFrame with results
+            results = pd.DataFrame({
+                'riskLevel': risk_levels,
+                'confidenceScore': confidences,
+                'ensembleScore': ensemble_scores
+            })
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"❌ Batch ensemble prediction failed: {e}")
+            # Return fallback predictions
+            n_rows = len(feature_df)
+            return pd.DataFrame({
+                'riskLevel': ['medium'] * n_rows,
+                'confidenceScore': [0.5] * n_rows,
+                'ensembleScore': [2.0] * n_rows,
+                'error': str(e)
+            })
+
+    def _predict_xgboost_batch(self, features: np.ndarray) -> np.ndarray:
+        """Vectorized XGBoost prediction"""
+        if self.xgb_model is None:
+            return np.full(len(features), 2.0)  # Default medium
+        try:
+            return self.xgb_model.predict(features)
+        except:
+            return np.full(len(features), 2.0)
+    
+    def _predict_lstm_batch(self, features: np.ndarray) -> np.ndarray:
+        """Vectorized LSTM prediction"""
+        if self.lstm_model is None:
+            return np.full(len(features), 2.0)  # Default medium
+        try:
+            self.lstm_model.eval()
+            with torch.no_grad():
+                features_tensor = torch.FloatTensor(features)
+                preds = self.lstm_model(features_tensor)
+                return preds.cpu().numpy().flatten()
+        except:
+            return np.full(len(features), 2.0)
+    
+    def _predict_isolation_batch(self, features: np.ndarray) -> np.ndarray:
+        """Vectorized Isolation Forest prediction"""
+        if self.isolation_model is None:
+            return np.full(len(features), 2.0)  # Default medium
+        try:
+            # Isolation Forest returns anomaly scores (-1 to 1), convert to 1-4 scale
+            anomaly_scores = self.isolation_model.decision_function(features)
+            # Map anomaly scores to risk scores (higher anomaly = higher risk)
+            normalized_scores = (anomaly_scores + 1) / 2  # 0 to 1
+            return 1 + normalized_scores * 3  # 1 to 4
+        except:
+            return np.full(len(features), 2.0)
+
     def predict(self, features: Dict[str, Any]) -> Dict[str, Any]:
         """Make ensemble prediction"""
         try:
