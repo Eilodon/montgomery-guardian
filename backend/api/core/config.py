@@ -1,5 +1,6 @@
 # backend/api/core/config.py
 from pydantic_settings import BaseSettings
+from pydantic import Field
 from typing import Optional
 
 class Settings(BaseSettings):
@@ -8,13 +9,21 @@ class Settings(BaseSettings):
     
     # Redis
     redis_url: str = "redis://localhost:6379"
+    redis_password: Optional[str] = None
+    
+    @property
+    def redis_url_with_auth(self) -> str:
+        """Get Redis URL with authentication if password is set"""
+        if self.redis_password:
+            return f"redis://:{self.redis_password}@localhost:6379"
+        return self.redis_url
     
     # External APIs
     bright_data_api_token: Optional[str] = None
     arcgis_api_timeout: int = 30
     
-    # Security
-    api_key: str = "mg_secret_key_2026_change_me"
+    # Security - BẮT BUỘC phải có trong .env
+    api_key: str = Field(..., env="API_KEY") # Không còn default nữa!
     allowed_origins: list[str] = ["http://localhost:3000", "http://localhost:8000"]
     
     # ETL Settings
@@ -31,5 +40,6 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"   # tránh lỗi khi thêm biến mới
 
 settings = Settings()

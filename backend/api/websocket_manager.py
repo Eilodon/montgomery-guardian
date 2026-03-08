@@ -5,7 +5,7 @@ import asyncio
 from datetime import datetime
 from typing import Dict, Any, Set
 from fastapi import WebSocket, WebSocketDisconnect
-from ..core.redis import redis_client
+from .core.redis import redis_client
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -175,7 +175,12 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 # FastAPI WebSocket endpoint
-async def websocket_endpoint(websocket: WebSocket):
+async def websocket_endpoint(websocket: WebSocket, x_api_key: str = None):
+    # Lấy key từ query param ?x_api_key=...
+    if not x_api_key or x_api_key != settings.api_key:
+        await websocket.close(code=4001, reason="Invalid API key")
+        return
+
     connection_id = f"conn_{len(manager.active_connections)}_{datetime.now().timestamp()}"
     await manager.connect(websocket, connection_id)
     

@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const BACKEND_URL = process.env.API_URL || 'http://localhost:8000';
-const API_KEY = process.env.API_KEY || 'mg_secret_key_2026_change_me';
+const API_KEY = process.env.API_KEY as string; // ← BỎ fallback
+
+if (!API_KEY) {
+    throw new Error('API_KEY is not set in environment variables');
+}
 
 // Helper function để pass-through an toàn
 async function proxyRequest(request: NextRequest, pathArray: string[], method: string) {
+    // === THÊM TRƯỚC KHI TẠO URL ===
+    const ALLOWED_PATHS = ['vision', 'chat', 'crime', 'requests', 'predictions', 'alerts', 'kpis'];
+    if (!ALLOWED_PATHS.includes(pathArray[0])) {
+        return NextResponse.json({ error: 'Forbidden path' }, { status: 403 });
+    }
+
     const path = pathArray.join('/');
     const searchParams = request.nextUrl.searchParams.toString();
     const url = `${BACKEND_URL}/api/v1/${path}${searchParams ? `?${searchParams}` : ''}`;
@@ -15,10 +25,10 @@ async function proxyRequest(request: NextRequest, pathArray: string[], method: s
         headers.delete('host'); // Ép host header tự phân giải
 
         const options: RequestInit = { method, headers };
-        
+
         // Chỉ đọc body nếu không phải GET/HEAD
         if (method !== 'GET' && method !== 'HEAD') {
-            options.body = request.body; 
+            options.body = request.body;
             // @ts-ignore - duplex is required for streaming
             options.duplex = 'half';
         }

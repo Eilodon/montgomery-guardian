@@ -38,8 +38,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "X-API-Key", "Authorization"],
 )
 
 app.include_router(crime.router, prefix="/api/v1", dependencies=[Depends(validate_api_key)])
@@ -55,4 +55,5 @@ app.add_api_websocket_route("/ws", websocket_endpoint)
 
 @app.get("/health")
 async def health_check():
+    # Rate limit: 100/minute would go here
     return {"status": "ok", "service": "montgomery-guardian-api"}

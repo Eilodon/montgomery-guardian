@@ -15,6 +15,25 @@ const PORT = process.env.PORT || 3001;
 // Security middleware
 app.use(helmet());
 
+// API Authentication middleware
+const API_KEY = process.env.API_KEY;
+if (!API_KEY) {
+  console.warn('⚠️ API_KEY not set in .env for ai-agents');
+}
+
+const authMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const clientKey = req.header('X-API-Key');
+  if (!clientKey || clientKey !== API_KEY) {
+    return res.status(401).json({ error: 'Invalid or missing X-API-Key' });
+  }
+  next();
+};
+
+// Apply authentication to protected routes
+app.use('/chat', authMiddleware);
+app.use('/vision/analyze', authMiddleware);
+// /health remains public for monitoring
+
 // CORS configuration
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:3000', 'http://localhost:8000'];
 app.use(cors({

@@ -40,7 +40,10 @@ async def chat_with_agent(request: ChatRequest):
             response = await client.post(
                 f"{AI_AGENTS_URL}/chat",
                 json=payload,
-                headers={"Content-Type": "application/json"}
+                headers={
+                    "Content-Type": "application/json",
+                    "X-API-Key": settings.api_key
+                }
             )
             
             if response.status_code == 200:

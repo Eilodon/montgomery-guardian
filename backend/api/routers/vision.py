@@ -8,6 +8,7 @@ import httpx
 import os
 import base64
 import io
+from PIL import Image
 
 router = APIRouter()
 
@@ -25,14 +26,26 @@ async def analyze_image(
     Analyze an image to detect service requests (potholes, graffiti, etc.).
     This endpoint uses direct Gemini Vision API integration.
     """
+    MAX_SIZE = 5 * 1024 * 1024  # 5MB
+
+    # === THÊM KIỂM TRA SIZE TRƯỚC KHI READ ===
+    if not image.content_type or not image.content_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="File must be an image")
+
+    # Kiểm tra size (FastAPI không tự chặn)
+    content = await image.read()
+    if len(content) > MAX_SIZE:
+        raise HTTPException(status_code=413, detail=f"File too large. Max 5MB (received {len(content)//(1024*1024)}MB)")
+
+    # Validate thực sự với Pillow (tránh file độc hại)
     try:
-        # Validate image file
-        if not image.content_type or not image.content_type.startswith('image/'):
-            raise HTTPException(status_code=400, detail="File must be an image")
-        
-        # Read and encode image
-        image_data = await image.read()
-        image_base64 = base64.b64encode(image_data).decode('utf-8')
+        img = Image.open(io.BytesIO(content))
+        img.verify()  # kiểm tra header
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid or corrupted image")
+
+    try:
+        image_base64 = base64.b64encode(content).decode('utf-8')
         
         # Try direct Gemini Vision API first
         result = await _analyze_with_gemini(image_base64, image.content_type, location_lat, location_lon, description)
@@ -67,7 +80,10 @@ async def _analyze_with_gemini(
             response = await client.post(
                 f"{AI_AGENTS_URL}/vision/analyze",
                 json=payload,
-                headers={"Content-Type": "application/json"}
+                headers={
+                    "Content-Type": "application/json",
+                    "X-API-Key": settings.api_key
+                }
             )
             
             if response.status_code == 200:
