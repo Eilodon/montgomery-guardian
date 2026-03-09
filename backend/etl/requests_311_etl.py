@@ -1,11 +1,19 @@
 # backend/etl/requests_311_etl.py
 import asyncio
 import pandas as pd
+import orjson # <-- Dùng orjson
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
 from sqlalchemy.orm import Session
+from sqlalchemy.dialects.postgresql import insert
 from api.core.database import SessionLocal
 from api.core.redis import redis_client
+from api.models.requests import ServiceRequest311
 from .arcgis_client import fetch_arcgis_dataset
+
+# Khởi tạo Pool
+cpu_pool = ThreadPoolExecutor(max_workers=4)
+db_pool = ThreadPoolExecutor(max_workers=4)
 
 class Requests311ETL:
     def __init__(self):
@@ -13,23 +21,27 @@ class Requests311ETL:
         self.cache_ttl = 3600  # 1 hour
 
     async def run_etl(self):
-        """Run the complete ETL process for 311 requests"""
         try:
-            print("🔄 Starting 311 requests ETL process...")
+            loop = asyncio.get_running_loop()
             
-            # Extract data from ArcGIS
+            # 1. Async I/O
             raw_data = await self.extract_requests_data()
             
-            # Transform data
-            transformed_data = self.transform_requests_data(raw_data)
+            # 2. CPU Bound -> ThreadPool
+            transformed_df = await loop.run_in_executor(
+                cpu_pool, self.transform_requests_data, raw_data
+            )
             
-            # Load data (cache in Redis for now, could load to database)
-            await self.load_requests_data(transformed_data)
+            # 3. Blocking DB I/O -> ThreadPool
+            await loop.run_in_executor(db_pool, self._sync_db_upsert, transformed_df)
+            
+            # 4. Async Redis
+            await self._async_redis_cache(transformed_df)
             
             print("✅ 311 requests ETL completed successfully")
             
         except Exception as e:
-            print(f"❌ 311 requests ETL failed: {e}")
+            print(f"❌ 311 ETL failed: {e}")
             raise
 
     async def extract_requests_data(self) -> pd.DataFrame:
@@ -146,17 +158,10 @@ class Requests311ETL:
         
         return df
 
-    async def load_requests_data(self, df: pd.DataFrame):
-        """Load transformed data to database and cache"""
-        print("💾 Loading 311 requests data to database and cache...")
-        
-        import json
-        from sqlalchemy.dialects.postgresql import insert
-        from api.models.requests import ServiceRequest311
-        
+    def _sync_db_upsert(self, df: pd.DataFrame):
+        """Chạy đồng bộ trong ThreadPool"""
         db = SessionLocal()
         try:
-            # Bulk UPSERT like crime_etl (50x faster)
             records = [
                 {
                     "objectid": int(row['requestId']),
@@ -181,37 +186,35 @@ class Requests311ETL:
                     set_={
                         "status": stmt.excluded.status,
                         "datemodified": stmt.excluded.datemodified,
-                        "description": stmt.excluded.description,
                     }
                 )
                 db.execute(stmt)
                 db.commit()
                 print(f"💾 DB: Bulk UPSERT {len(records)} 311 records")
-            
-            # Redis uses json.dumps (not str(dict) anymore)
-            # Convert Timestamp objects to ISO format for JSON serialization
-            df_for_json = df.copy()
-            for col in df_for_json.select_dtypes(include=['datetime64[ns]', 'datetime64']).columns:
-                df_for_json[col] = df_for_json[col].apply(lambda x: x.isoformat() if pd.notna(x) else None)
-            
-            data_json = json.dumps(df_for_json.to_dict('records'))
-            await redis_client.setex(self.redis_key, self.cache_ttl, data_json)
-            
-            metadata = {
-                'last_updated': datetime.now().isoformat(),
-                'record_count': len(df),
-                'source': 'arcgis'
-            }
-            await redis_client.setex(f"{self.redis_key}_metadata", self.cache_ttl, json.dumps(metadata))
-            
-            print(f"💾 Cached {len(df)} 311 request records")
-            
         except Exception as e:
             db.rollback()
-            print(f"❌ Failed to cache/save 311 requests: {e}")
-            raise
+            raise e
         finally:
             db.close()
+
+    async def _async_redis_cache(self, df: pd.DataFrame):
+        """Hàm thuần Async"""
+        df_for_json = df.copy()
+        for col in df_for_json.select_dtypes(include=['datetime64[ns]', 'datetime64']).columns:
+            df_for_json[col] = df_for_json[col].apply(lambda x: x.isoformat() if pd.notna(x) else None)
+        
+        # Dùng orjson siêu tốc
+        data_json = orjson.dumps(df_for_json.to_dict('records')).decode('utf-8')
+        await redis_client.setex(self.redis_key, self.cache_ttl, data_json)
+        
+        metadata = {
+            'last_updated': datetime.now().isoformat(),
+            'record_count': len(df),
+            'source': 'arcgis'
+        }
+        await redis_client.setex(f"{self.redis_key}_metadata", self.cache_ttl, orjson.dumps(metadata).decode('utf-8'))
+        
+        print(f"💾 Cached {len(df)} 311 request records")
 
     async def get_cached_requests_data(self) -> pd.DataFrame:
         """Get cached 311 requests data from Redis"""
