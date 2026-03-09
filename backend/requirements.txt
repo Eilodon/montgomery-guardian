@@ -18,3 +18,4 @@ pillow>=9.0.0
 geoalchemy2>=0.14.0
 chromadb>=0.4.24
 slowapi>=0.1.9
+orjson>=3.9.0

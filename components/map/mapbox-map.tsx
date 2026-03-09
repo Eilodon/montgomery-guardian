@@ -223,26 +223,32 @@ export function MapboxMap({
     }
   }, [initialViewState, mapLoaded]);
 
-  // Handle layers (Single Mutator)
+  // THỢ RÈN: Handle layers bằng Visibility (Zero-Rebuild)
   useEffect(() => {
-    if (map.current && mapLoaded) {
-      // Heatmap handling
-      if (showHeatmap && (crimeGeoJson || effectiveCrimeData)) {
-        addCrimeHeatmapLayer(map.current, crimeGeoJson || effectiveCrimeData, "crime-heatmap");
-      } else if (!showHeatmap && map.current.getLayer("crime-heatmap-circles")) {
-        map.current.removeLayer("crime-heatmap-circles");
-        map.current.removeSource("crime-heatmap");
-      }
+    if (!map.current || !mapLoaded) return;
+    const m = map.current;
 
-      // 311 Points handling
-      if (show311Points && effectiveRequests311) {
-        add311MarkersLayer(map.current, effectiveRequests311);
-      } else if (!show311Points && map.current.getLayer("311-markers-symbols")) {
-        map.current.removeLayer("311-markers-symbols");
-        map.current.removeSource("311-markers");
+    // Heatmap handling
+    if (showHeatmap && (crimeGeoJson || effectiveCrimeData)) {
+      addCrimeHeatmapLayer(m, crimeGeoJson || effectiveCrimeData, "crime-heatmap");
+      if (m.getLayer("crime-heatmap-circles")) {
+        m.setLayoutProperty("crime-heatmap-circles", "visibility", "visible");
       }
+    } else if (!showHeatmap && m.getLayer("crime-heatmap-circles")) {
+      // KHÔNG REMOVE LAYER - CHỈ ẨN ĐI ĐỂ GIỮ CACHE GPU
+      m.setLayoutProperty("crime-heatmap-circles", "visibility", "none");
     }
-  }, [mapLoaded, crimeData, crimeGeoJson, requests311, showHeatmap, show311Points]);
+
+    // 311 Points handling
+    if (show311Points && effectiveRequests311) {
+      add311MarkersLayer(m, effectiveRequests311);
+      if (m.getLayer("311-markers-symbols")) {
+        m.setLayoutProperty("311-markers-symbols", "visibility", "visible");
+      }
+    } else if (!show311Points && m.getLayer("311-markers-symbols")) {
+      m.setLayoutProperty("311-markers-symbols", "visibility", "none");
+    }
+  }, [mapLoaded, effectiveCrimeData, crimeGeoJson, effectiveRequests311, showHeatmap, show311Points]);
 
   return (
     <div className={`relative w-full h-full ${className}`}>
@@ -285,52 +291,47 @@ export function useMapboxMap() {
 
 export function addCrimeHeatmapLayer(
   map: mapboxgl.Map,
-  data: any[] | any, // Can be raw array or GeoJSON object
+  data: any, // Nhận trực tiếp mảng hoặc GeoJSON
   layerId: string = "crime-heatmap"
 ) {
-  // Guard: không thao tác nếu style chưa load xong
   if (!map.isStyleLoaded()) {
     map.once("styledata", () => addCrimeHeatmapLayer(map, data, layerId));
     return;
   }
 
-  // Pre-process if it's a raw array, otherwise use directly
-  const sourceData: mapboxgl.GeoJSONSourceSpecification["data"] =
-    (data && data.type === "FeatureCollection")
-      ? data
+  // TỐI ƯU: Nếu đã là GeoJSON (từ useMemo) thì dùng luôn, không map lại nữa
+  const sourceData: mapboxgl.GeoJSONSourceSpecification["data"] = 
+    (data && data.type === "FeatureCollection") 
+      ? data 
       : {
-        type: "FeatureCollection",
-        features: (data as any[]).map((crime) => ({
-          type: "Feature",
-          properties: {
-            ...crime,
-            intensity:
-              crime.riskLevel === "critical"
-                ? 1
-                : crime.riskLevel === "high"
-                  ? 0.75
-                  : crime.riskLevel === "medium"
-                    ? 0.5
-                    : 0.25,
-          },
-          geometry: {
-            type: "Point",
-            coordinates: [crime.longitude, crime.latitude],
-          },
-        })),
-      };
+          type: "FeatureCollection",
+          features: (data as any[] || []).map((crime) => ({
+            type: "Feature",
+            properties: {
+              ...crime,
+              intensity: crime.riskLevel === "critical" ? 1 : 
+                         crime.riskLevel === "high" ? 0.75 : 
+                         crime.riskLevel === "medium" ? 0.5 : 0.25,
+            },
+            geometry: {
+              type: "Point",
+              coordinates: [crime.longitude, crime.latitude],
+            },
+          })),
+        };
 
   const existingSource = map.getSource(layerId) as mapboxgl.GeoJSONSource | undefined;
 
   if (!existingSource) {
-    // ── First render: tạo source + layer với full paint config ──────────────
     map.addSource(layerId, { type: "geojson", data: sourceData });
-
     map.addLayer(
       {
         id: `${layerId}-circles`,
         type: "circle",
         source: layerId,
+        layout: {
+            "visibility": "visible" // Thêm layout visibility
+        },
         paint: {
           "circle-radius": [
             "interpolate", ["linear"], ["zoom"],
@@ -339,11 +340,11 @@ export function addCrimeHeatmapLayer(
           ],
           "circle-color": [
             "interpolate", ["linear"], ["get", "intensity"],
-            0, "#10b981", // green  — low
-            0.25, "#eab308", // yellow — medium
-            0.5, "#f97316", // orange — high
-            0.75, "#ef4444", // red    — critical
-            1, "#dc2626", // dark red
+            0, "#10b981", 
+            0.25, "#eab308", 
+            0.5, "#f97316", 
+            0.75, "#ef4444", 
+            1, "#dc2626", 
           ],
           "circle-opacity": 0.6,
           "circle-stroke-color": "#ffffff",
@@ -351,10 +352,10 @@ export function addCrimeHeatmapLayer(
           "circle-stroke-opacity": 0.3,
         },
       },
-      "montgomery-boundary-fill" // insert below boundary để không bị che
+      "montgomery-boundary-fill"
     );
   } else {
-    // ── Subsequent updates: chỉ setData, KHÔNG recreate layer (tránh flicker) ─
+    // Ép kiểu an toàn và cập nhật data không giật lag
     existingSource.setData(sourceData as GeoJSON.FeatureCollection);
   }
 }
@@ -399,6 +400,7 @@ export function add311MarkersLayer(
           "text-size": 10,
           "text-offset": [0, 2],
           "text-anchor": "top",
+          "visibility": "visible" // Thêm layout visibility
         },
         paint: {
           "text-color": "#ffffff",

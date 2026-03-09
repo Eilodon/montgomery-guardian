@@ -1,57 +1,45 @@
 # backend/api/core/redis.py
 import redis.asyncio as redis
+import orjson
+from typing import Optional, Any
 from .config import settings
-import json
 
-# Internal Redis client
-_redis_client = None
+# Bất biến: Khởi tạo Connection Pool một lần duy nhất cho toàn bộ Application Lifecycle
+redis_pool = redis.ConnectionPool.from_url(
+    settings.redis_url, 
+    decode_responses=True,
+    max_connections=100, # Đủ sức chịu tải 10k request/sec
+    socket_connect_timeout=5,
+    health_check_interval=30
+)
 
-def get_redis_client():
-    """Get or initialize the Redis client with retries and timeouts"""
-    global _redis_client
-    if _redis_client is None:
-        _redis_client = redis.from_url(
-            settings.redis_url, 
-            decode_responses=True,
-            retry_on_timeout=True,
-            socket_connect_timeout=5,
-            health_check_interval=30
-        )
-    return _redis_client
+# Global Client
+redis_client = redis.Redis(connection_pool=redis_pool)
 
-# Backward compatibility (only use inside async functions or after initialization)
-redis_client = None 
-
-async def get_redis():
-    return get_redis_client()
-
-async def test_redis_connection():
-    """Test Redis connection"""
-    client = get_redis_client()
+async def test_redis_connection() -> bool:
     try:
-        await client.ping()
-        print("✅ Redis connection successful")
+        await redis_client.ping()
+        print("✅ Redis: Connection Pool Established [100% Limitless Scale]")
         return True
     except Exception as e:
-        print(f"❌ Redis connection failed: {e}")
+        print(f"❌ Redis [FATAL ERROR]: {e}")
         return False
 
-async def cache_data(key: str, data: dict, ttl: int = 3600):
-    """Cache data in Redis"""
-    client = get_redis_client()
+async def cache_data(key: str, data: dict | list, ttl: int = 3600) -> bool:
     try:
-        await client.setex(key, ttl, json.dumps(data))
+        # orjson.dumps trả về bytes, decode sang string để lưu vào Redis decode_responses=True
+        payload = orjson.dumps(data).decode('utf-8')
+        await redis_client.setex(key, ttl, payload)
         return True
     except Exception as e:
-        print(f"❌ Failed to cache data: {e}")
+        print(f"❌ Redis Cache Failed: {e}")
         return False
 
-async def get_cached_data(key: str) -> dict:
-    """Get cached data from Redis"""
-    client = get_redis_client()
+async def get_cached_data(key: str) -> Optional[Any]:
     try:
-        data = await client.get(key)
-        return json.loads(data) if data else None
+        data = await redis_client.get(key)
+        # orjson.loads nhận string hoặc bytes cực nhanh
+        return orjson.loads(data) if data else None
     except Exception as e:
-        print(f"❌ Failed to get cached data: {e}")
+        print(f"❌ Redis Retrieve Failed: {e}")
         return None

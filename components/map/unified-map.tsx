@@ -25,7 +25,7 @@ export function UnifiedMap({ }: UnifiedMapProps) {
           <ToggleGroup
             type="single"
             value={activeView}
-            onValueChange={(val) => val && setActiveView(val as MapView)}
+            onValueChange={(val: string) => val && setActiveView(val as MapView)}
             className="mb-2 bg-slate-100 rounded-lg p-1 dark:bg-slate-800"
           >
             <ToggleGroupItem value="crime" className="text-xs px-3 py-1">
@@ -80,8 +80,8 @@ export function UnifiedMap({ }: UnifiedMapProps) {
         />
       </div>
 
-      {/* Crime Statistics Overlay (Conditional) */}
-      {(activeView === "crime" || (activeView === "unified" && showCrime)) && crimeData.length > 0 && (
+      {/* Crime Statistics Overlay (Safety Checked) */}
+      {(activeView === "crime" || (activeView === "unified" && showCrime)) && (crimeData?.length || 0) > 0 && (
         <div className="absolute top-20 left-4 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-3 max-w-[180px] z-10 hidden md:block">
           <h3 className="text-[10px] font-semibold text-slate-100 mb-2 flex items-center gap-1">
             <AlertTriangle className="w-3 h-3 text-red-400" />
@@ -89,15 +89,16 @@ export function UnifiedMap({ }: UnifiedMapProps) {
           </h3>
           <div className="space-y-1">
             <div className="flex justify-between text-[10px]">
-              <span className="text-slate-400">Total</span>
-              <span className="text-slate-100">{crimeData.length}</span>
+              <span className="text-slate-400">Total Live</span>
+              {/* Highlight màu để user biết đây là real-time data */}
+              <span className="text-green-400 font-bold">{crimeData?.length || 0}</span>
             </div>
           </div>
         </div>
       )}
 
-      {/* 311 Statistics Overlay (Conditional) */}
-      {(activeView === "311" || (activeView === "unified" && show311)) && requests311.length > 0 && (
+      {/* 311 Statistics Overlay (Safety Checked) */}
+      {(activeView === "311" || (activeView === "unified" && show311)) && (requests311?.length || 0) > 0 && (
         <div className="absolute top-20 right-4 bg-slate-900/95 backdrop-blur-sm border border-slate-700 rounded-lg p-3 max-w-[180px] z-10 hidden md:block">
           <h3 className="text-[10px] font-semibold text-slate-100 mb-2 flex items-center gap-1">
             <Wrench className="w-3 h-3 text-blue-400" />
@@ -106,7 +107,8 @@ export function UnifiedMap({ }: UnifiedMapProps) {
           <div className="space-y-1">
             <div className="flex justify-between text-[10px]">
               <span className="text-slate-400">Active</span>
-              <span className="text-slate-100">{requests311.length}</span>
+              {/* Highlight màu để user biết đây là real-time data */}
+              <span className="text-blue-400 font-bold">{requests311?.length || 0}</span>
             </div>
           </div>
         </div>

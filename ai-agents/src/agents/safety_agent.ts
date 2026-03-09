@@ -6,52 +6,65 @@ import { AgentInput, ToolResponse } from '../types/agents';
 import { logger } from '../utils/logger';
 import { sanitizeForPrompt, safeJsonStringify } from '../utils/prompt_sanitizer';
 
+// SCHEMA TRÍCH XUẤT THÔNG MINH
+const LocationExtractionSchema = z.object({
+    neighborhood: z.enum([
+      'Downtown', 'Capitol Heights', 'Oak Park', 'Garden District',
+      'Cloverdale', 'Old Cloverdale', 'Bellevue', 'Chisholm',
+      'Highland Park', 'Tulane', 'Washington Park', 'Wyndridge'
+    ]).nullable().describe("Khu vực user đang hỏi đến. Null nếu không nhắc đến."),
+});
+
 export async function safetyAgent(ai: any, input: AgentInput): Promise<any> {
   try {
     logger.agentStart('Safety', input.message.length, !!input.userLocation);
 
-    // Extract relevant information from the user's message
-    const locationContext = input.userLocation ?
-      `User location: ${input.userLocation.lat}, ${input.userLocation.lng}` : '';
+    // 1. DÙNG LLM ĐỂ TRÍCH XUẤT NGỮ CẢNH (Không dùng .includes ngớ ngẩn nữa)
+    let targetNeighborhood: string | undefined = undefined;
+    try {
+        const { output: extraction } = await ai.generate({
+            prompt: `Extract specific Montgomery neighborhood user is asking about from their message. 
+            Only extract if it's one of the target areas. If they are moving away from an area, don't select it.
+            Message: "${input.message}"`,
+            output: { schema: LocationExtractionSchema }
+        });
+        targetNeighborhood = extraction?.neighborhood || undefined;
+    } catch (e) {
+        logger.error('Entity Extraction Failed', e);
+    }
 
-    const historyContext = input.history && input.history.length > 0 ?
+    const locationContext = input.userLocation ? 
+      `User location: ${input.userLocation.lat}, ${input.userLocation.lng}` : '';
+    const historyContext = input.history && input.history.length > 0 ? 
       `Recent conversation: ${input.history.slice(-2).map((h: any) => `${h.role}: ${h.content}`).join(' | ')}` : '';
 
-    // Use RAG to get relevant crime statistics and safety policies
+    // 2. RAG (Giữ nguyên luồng của bạn)
     let ragContext = '';
     try {
-      const ragResult = await ragService.searchKnowledge(
-        input.message,
-        'crime', // Đồng bộ với metadata trong chroma_setup.py
-        3
-      );
-
+      const ragResult = await ragService.searchKnowledge(input.message, 'crime', 3);
       if (ragResult.results.length > 0) {
-        ragContext = `Dưới đây là một số thông tin liên quan từ cơ sở dữ liệu chính sách và an toàn:\n${ragResult.results.map((r: any) => `- ${r.document.substring(0, 200)}...`).join('\n')}`;
+        ragContext = `Relevant safety policies:\n${ragResult.results.map((r: any) => `- ${r.document.substring(0, 200)}...`).join('\n')}`;
       }
     } catch (ragError) {
       logger.error('SafetyRAG', ragError);
     }
 
-    // Use tools to get relevant crime data
+    // 3. QUERY TOOL VỚI THAM SỐ CHUẨN XÁC
     let crimeData = null;
     try {
       const toolRes = await queryCrimeTool({
-        neighborhood: extractNeighborhood(input.message) || undefined,
+        neighborhood: targetNeighborhood, // <-- Giá trị trích xuất từ LLM
         limit: 10,
         userLocation: input.userLocation
       });
-      if (toolRes.success) {
-        crimeData = toolRes.data;
-      } else {
-        // Nhét thông báo lỗi của Tool vào context để LLM biết đường trả lời
-        ragContext += `\nLưu ý hệ thống: ${toolRes.message}`;
-      }
+      if (toolRes.success) crimeData = toolRes.data;
+      else ragContext += `\nLưu ý hệ thống: ${toolRes.message}`;
     } catch (toolError) {
       logger.error('SafetyTool', toolError);
-      ragContext += '\nLưu ý hệ thống: Không thể truy cập dữ liệu an toàn công cộng hiện tại.';
+      ragContext += '\nLưu ý hệ thống: Không thể truy cập dữ liệu.';
     }
 
+    // 4. SINH KẾT QUẢ CUỐI (Giữ nguyên luồng prompt của bạn)
     const { text } = await ai.generate({
       prompt: `You are a safety intelligence expert for Montgomery, Alabama.
 You have access to recent crime data and safety statistics.
@@ -59,13 +72,15 @@ You have access to recent crime data and safety statistics.
 CONTEXT:
 ${locationContext}
 ${historyContext}
+Target Neighborhood Info: ${targetNeighborhood || 'General City Area'}
 ${ragContext}
-${crimeData ? `Recent crime data: ${safeJsonStringify(sanitizeForPrompt(crimeData), 3)}` : 'No specific crime data available for this request.'}
-1. Addresses their specific safety concern
-2. Provides relevant crime statistics if available
-3. Offers practical safety advice
-4. Suggests appropriate resources or contacts
-5. Maintains a professional but reassuring tone
+${crimeData ? `Crime data: ${safeJsonStringify(sanitizeForPrompt(crimeData), 3)}` : 'No specific data.'}
+
+Address the user's concern by:
+1. Providing relevant crime statistics if available
+2. Offering practical safety advice
+3. Suggesting appropriate resources or contacts
+4. Maintaining a professional but reassuring tone
 
 Keep response under 200 words. Focus on Montgomery, Alabama context.`,
     });
@@ -73,11 +88,7 @@ Keep response under 200 words. Focus on Montgomery, Alabama context.`,
     return {
       content: text,
       agentType: 'safety_intel',
-      metadata: {
-        source: 'safety_agent',
-        hasCrimeData: !!crimeData,
-        userLocation: input.userLocation
-      }
+      metadata: { source: 'safety_agent', hasCrimeData: !!crimeData, extractedNeighborhood: targetNeighborhood }
     };
 
   } catch (error) {
@@ -88,21 +99,4 @@ Keep response under 200 words. Focus on Montgomery, Alabama context.`,
       metadata: { error: 'safety_agent_failed' }
     };
   }
-}
-
-function extractNeighborhood(message: string): string | null {
-  const neighborhoods = [
-    'Downtown', 'Capitol Heights', 'Oak Park', 'Garden District',
-    'Cloverdale', 'Old Cloverdale', 'Bellevue', 'Chisholm',
-    'Highland Park', 'Tulane', 'Washington Park', 'Wyndridge'
-  ];
-
-  const messageLower = message.toLowerCase();
-  for (const neighborhood of neighborhoods) {
-    if (messageLower.includes(neighborhood.toLowerCase())) {
-      return neighborhood;
-    }
-  }
-
-  return null;
 }

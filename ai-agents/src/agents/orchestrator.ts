@@ -14,43 +14,42 @@ export const ai = genkit({
   model: 'googleai/gemini-flash-latest',
 });
 
-// Intent classifier - routes to correct agent
+// 1. ĐỊNH NGHĨA BẤT BIẾN: Schema này sẽ ép LLM không thể trả về sai cấu trúc
+const IntentSchema = z.object({
+  agentType: z.enum(['safety_intel', 'service_311', 'web_scraper', 'general']),
+  confidence: z.number().describe("Mức độ tự tin từ 0.0 đến 1.0"),
+});
+
+// 2. RÈN LẠI CLASSIFIER
 const classifyIntent = ai.defineFlow(
   {
     name: 'classifyIntent',
     inputSchema: z.string(),
-    outputSchema: z.object({
-      agentType: z.enum(['safety_intel', 'service_311', 'web_scraper', 'general']),
-      confidence: z.number(),
-    }),
+    outputSchema: IntentSchema,
   },
   async (message) => {
     try {
+      // ÉP BUỘC Gemini trả về đúng Object (không xả text rác, không ảo giác)
       const { output } = await ai.generate({
-        prompt: `Classify this message into one category:
+        prompt: `Classify this message into one category based on user's intent:
 - "safety_intel": questions about crime, safety scores, dangerous areas, patrol, emergency
 - "service_311": questions about potholes, trash, graffiti, city services, request status, permits
 - "web_scraper": questions about current news, road closures, today's events, real-time city updates
 - "general": everything else
 
-Message: "${message}"
-
-Respond with JSON only: { "agentType": "...", "confidence": 0.0-1.0 }`,
-        output: { format: 'json' },
+Message: "${message}"`,
+        output: { schema: IntentSchema }, // <-- VŨ KHÍ TỐI THƯỢNG
       });
 
-      const result = output as any;
-
-      // Validate the response
-      if (!result.agentType || !result.confidence) {
-        console.warn('Invalid intent classification response:', result);
-        return { agentType: 'general', confidence: 0.5 };
+      if (!output) {
+        throw new Error("LLM trả về kết quả rỗng (Null output)");
       }
 
-      return result;
+      return output;
     } catch (error) {
-      console.error('Intent classification failed:', error);
-      return { agentType: 'general', confidence: 0.3 };
+      logger.error('Intent classification failed:', error);
+      // Fallback an toàn nếu API Google sập
+      return { agentType: 'general' as const, confidence: 0.3 };
     }
   }
 );

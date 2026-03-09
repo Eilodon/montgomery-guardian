@@ -1,83 +1,42 @@
 # backend/scraper/news_scraper.py
 import asyncio
-import httpx
-from datetime import datetime, timedelta
+import orjson
+from datetime import datetime
 from typing import List, Dict
-import json
-from .bright_data_client import scrape_url_as_markdown
+
+from .bright_data_client import scrape_all_sources
 from .alert_extractor import extract_alerts_from_content
 from api.core.redis import redis_client
-from api.core.config import settings
 
 class NewsScraper:
     def __init__(self):
         self.redis_key = "news_alerts"
         self.cache_ttl = 900  # 15 minutes
         
-    async def scrape_montgomery_news(self) -> List[Dict]:
-        """Scrape Montgomery news sources for safety-related content"""
-        sources = [
-            {
-                "name": "Montgomery Police Department",
-                "url": "https://www.montgomeryal.gov/Police",
-                "keywords": ["crime", "safety", "arrest", "incident", "emergency"]
-            },
-            {
-                "name": "WSFA News",
-                "url": "https://www.wsfa.com",
-                "keywords": ["Montgomery", "crime", "accident", "fire", "emergency"]
-            },
-            {
-                "name": "Montgomery Advertiser",
-                "url": "https://www.montgomeryadvertiser.com",
-                "keywords": ["crime", "safety", "police", "fire", "accident"]
-            }
-        ]
+    async def run_scraping_job(self):
+        print("🔄 [News Scraper] Initiating Global Sweep...")
+        
+        # 1. Gọi Lò phản ứng cào dữ liệu (đã xử lý concurrent bên trong)
+        scraped_pages = await scrape_all_sources()
         
         all_alerts = []
-        
-        for source in sources:
+        # 2. Extract dữ liệu
+        for page in scraped_pages:
             try:
-                alerts = await self.scrape_source(source)
-                all_alerts.extend(alerts)
-                print(f"📰 Scraped {len(alerts)} alerts from {source['name']}")
+                alerts = extract_alerts_from_content(page["url"], page["content"])
+                all_alerts.extend([alert.model_dump() for alert in alerts])
             except Exception as e:
-                print(f"⚠️ Failed to scrape {source['name']}: {e}")
-                
-        return all_alerts
-    
-    async def scrape_source(self, source: Dict) -> List[Dict]:
-        """Scrape a single news source using Bright Data and AI extraction"""
-        try:
-            print(f"🕵️ Scraping {source['name']} via Bright Data...")
-            markdown_content = await scrape_url_as_markdown(source['url'])
-            
-            if not markdown_content:
-                print(f"⚠️ No content returned for {source['name']}")
-                return []
-            
-            # Use AlertExtractor to get structured data from Markdown
-            # In a full-blown implementation, this would call a Gemini-powered extraction service
-            alerts = extract_alerts_from_content(source['url'], markdown_content)
-            
-            # Convert AlertItem objects to dictionaries for storage
-            return [alert.model_dump() for alert in alerts]
-            
-        except Exception as e:
-            print(f"❌ Error scraping {source['name']}: {e}")
-            return []
-    
+                print(f"⚠️ Extraction failed for {page['url']}: {e}")
+        
+        # 3. Cache Data
+        await self.cache_alerts(all_alerts)
+        print(f"✅ [News Scraper] Sweep Complete. Extracted {len(all_alerts)} alerts.")
+
     async def cache_alerts(self, alerts: List[Dict]):
-        """Cache alerts in Redis"""
         try:
-            alerts_json = json.dumps(alerts)
-            await redis_client.setex(
-                self.redis_key,
-                self.cache_ttl,
-                alerts_json
-            )
+            payload = orjson.dumps(alerts).decode('utf-8')
+            await redis_client.setex(self.redis_key, self.cache_ttl, payload)
             
-            # Cache metadata
             metadata = {
                 "last_updated": datetime.now().isoformat(),
                 "alert_count": len(alerts),
@@ -86,41 +45,37 @@ class NewsScraper:
             await redis_client.setex(
                 f"{self.redis_key}_metadata",
                 self.cache_ttl,
-                json.dumps(metadata)
+                orjson.dumps(metadata).decode('utf-8')
             )
-            
-            print(f"💾 Cached {len(alerts)} news alerts")
-            
         except Exception as e:
-            print(f"❌ Failed to cache alerts: {e}")
+            print(f"❌ Redis Cache Error: {e}")
     
     async def get_cached_alerts(self) -> List[Dict]:
         """Get cached alerts from Redis"""
         try:
             cached_data = await redis_client.get(self.redis_key)
             if cached_data:
-                return json.loads(cached_data)
+                return orjson.loads(cached_data)
             return []
         except Exception as e:
             print(f"❌ Failed to get cached alerts: {e}")
             return []
+
+# Legacy compatibility functions
+async def scrape_montgomery_news() -> List[Dict]:
+    """Legacy function for backward compatibility"""
+    scraper = NewsScraper()
+    pages = await scrape_all_sources()
     
-    async def run_scraping_job(self):
-        """Run the complete scraping job"""
+    all_alerts = []
+    for page in pages:
         try:
-            print("🔄 Starting news scraping job...")
-            
-            # Scrape alerts
-            alerts = await self.scrape_montgomery_news()
-            
-            # Cache alerts
-            await self.cache_alerts(alerts)
-            
-            print("✅ News scraping job completed successfully")
-            
+            alerts = extract_alerts_from_content(page["url"], page["content"])
+            all_alerts.extend([alert.model_dump() for alert in alerts])
         except Exception as e:
-            print(f"❌ News scraping job failed: {e}")
-            raise
+            print(f"⚠️ Extraction failed for {page['url']}: {e}")
+    
+    return all_alerts
 
 # Scraper runner function
 async def run_news_scraper():

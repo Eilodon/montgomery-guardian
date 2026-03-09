@@ -1,10 +1,8 @@
 # backend/scraper/bright_data_client.py
-# Dùng Bright Data Web API (không phải MCP — MCP là cho Node.js)
-# Python backend gọi Bright Data REST API trực tiếp
-
+import asyncio
 import httpx
 import os
-from typing import Optional
+from typing import Optional, Dict, List
 
 BRIGHT_DATA_TOKEN = os.getenv("BRIGHT_DATA_API_TOKEN")
 
@@ -15,35 +13,69 @@ SOURCES_TO_SCRAPE = [
     "https://www.montgomeryadvertiser.com/news/crime",
 ]
 
-async def scrape_url_as_markdown(url: str) -> Optional[str]:
-    """
-    Use Bright Data Scraping Browser API to get page content as markdown.
-    Handles CAPTCHAs, dynamic JS rendering automatically.
-    """
-    if not BRIGHT_DATA_TOKEN:
-        print("⚠️ No Bright Data token — using mock data")
-        return _get_mock_news_content(url)
+# Singleton HTTP Client để tái sử dụng TCP connections
+http_client = httpx.AsyncClient(
+    timeout=httpx.Timeout(120.0), # BrightData render JS tốn thời gian
+    limits=httpx.Limits(max_connections=50, max_keepalive_connections=20)
+)
 
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            # Bright Data Scraping Browser endpoint
-            response = await client.post(
+async def scrape_url_as_markdown(url: str, semaphore: asyncio.Semaphore) -> Dict:
+    """Core Fetcher with Semaphore Lock"""
+    async with semaphore:
+        if not BRIGHT_DATA_TOKEN:
+            print(f"⚠️ Mocking {url}")
+            return {"url": url, "content": _get_mock_news_content(url), "status": "mocked"}
+
+        try:
+            response = await http_client.post(
                 "https://api.brightdata.com/request",
                 headers={
                     "Authorization": f"Bearer {BRIGHT_DATA_TOKEN}",
                     "Content-Type": "application/json",
                 },
-                json={
-                    "zone": "scraping_browser",
-                    "url": url,
-                    "format": "markdown",
-                },
+                json={"zone": "scraping_browser", "url": url, "format": "markdown"},
             )
             response.raise_for_status()
-            return response.text
-    except Exception as e:
-        print(f"⚠️ Bright Data scrape failed for {url}: {e}")
-        return _get_mock_news_content(url)
+            return {"url": url, "content": response.text, "status": "success"}
+        except Exception as e:
+            print(f"⚠️ Bright Data failed for {url}: {e}")
+            return {"url": url, "content": _get_mock_news_content(url), "status": "failed"}
+
+async def scrape_all_sources() -> List[Dict]:
+    """Concurrent Execution Protocol"""
+    # Khóa concurrency ở mức 5 luồng cùng lúc để không bị Bright Data chặn
+    semaphore = asyncio.Semaphore(5)
+    
+    tasks = [scrape_url_as_markdown(url, semaphore) for url in SOURCES_TO_SCRAPE]
+    
+    # Kích nổ toàn bộ HTTP requests song song
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Lọc kết quả hợp lệ
+    return [r for r in results if isinstance(r, dict) and r.get("content")]
+
+# Legacy compatibility functions
+async def scrape_url_as_markdown_legacy(url: str) -> Optional[str]:
+    """Legacy function for backward compatibility"""
+    semaphore = asyncio.Semaphore(1)
+    result = await scrape_url_as_markdown(url, semaphore)
+    return result.get("content") if result else None
+
+async def test_scraping():
+    """Test scraping functionality"""
+    print("🧪 Testing Bright Data scraping...")
+    
+    # Test with concurrent scraping
+    results = await scrape_all_sources()
+    
+    if results:
+        print(f"✅ Successfully scraped {len(results)} sources")
+        for result in results:
+            print(f"📄 {result['url']}: {len(result['content'])} chars [{result['status']}]")
+        return True
+    else:
+        print("❌ Failed to scrape any sources")
+        return False
 
 def _get_mock_news_content(url: str) -> str:
     """Fallback mock content để demo hoạt động khi Bright Data unavailable"""
@@ -114,28 +146,3 @@ Multiple infrastructure and community improvement projects currently underway ac
 ## Public Announcements
 Residents encouraged to stay informed through official city channels and local news outlets.
         """
-
-async def scrape_all_sources() -> list[dict]:
-    """Scrape tất cả sources và trả về list of {url, content}"""
-    results = []
-    for url in SOURCES_TO_SCRAPE:
-        content = await scrape_url_as_markdown(url)
-        if content:
-            results.append({"url": url, "content": content})
-    return results
-
-async def test_scraping():
-    """Test scraping functionality"""
-    print("🧪 Testing Bright Data scraping...")
-    
-    # Test with a single URL
-    test_url = SOURCES_TO_SCRAPE[0]
-    content = await scrape_url_as_markdown(test_url)
-    
-    if content:
-        print(f"✅ Successfully scraped {test_url}")
-        print(f"📄 Content length: {len(content)} characters")
-        return True
-    else:
-        print(f"❌ Failed to scrape {test_url}")
-        return False

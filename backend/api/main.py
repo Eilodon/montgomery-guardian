@@ -6,26 +6,27 @@ import asyncio
 
 from .routers import crime, requests, predictions, alerts, chat, vision, kpis, districts
 from .core.config import settings
-from .websocket_manager import websocket_endpoint
+from .websocket_manager import websocket_endpoint, start_heartbeat
 from etl.scheduler import start_scheduler
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 async def validate_api_key(api_key: str = Security(api_key_header)):
     if api_key != settings.api_key:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Could not validate credentials",
-        )
+        raise HTTPException(status_code=403, detail="Invalid API Key")
     return api_key
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: run ETL & start Bright Data scraper cron
+    # Khởi động ETL Worker
     asyncio.create_task(start_scheduler())
+    
+    # Khởi động WebSocket Heartbeat Monitor
+    start_heartbeat()
+    
+    print("🚀 Montgomery Guardian Core Engine Online")
     yield
-    # Shutdown
-    pass
+    print("🛑 Shutting down gracefully...")
 
 app = FastAPI(
     title="Montgomery Guardian API",

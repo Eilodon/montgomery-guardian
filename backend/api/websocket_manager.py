@@ -1,11 +1,10 @@
 # backend/api/websocket_manager.py
-import json
+import orjson
 import logging
 import asyncio
 from datetime import datetime
 from typing import Dict, Any, Set
 from fastapi import WebSocket, WebSocketDisconnect
-from .core.redis import redis_client
 from .core.config import settings
 
 logging.basicConfig(level=logging.INFO)
@@ -17,6 +16,47 @@ class ConnectionManager:
         self.connection_metadata: Dict[str, Dict[str, Any]] = {}
         self.rooms: Dict[str, Set[str]] = {}
         self.heartbeat_task = None
+
+    async def _safe_send(self, connection_id: str, message_bytes: bytes) -> bool:
+        """Hàm con: Gửi an toàn và tự disconnect nếu chết"""
+        try:
+            ws = self.active_connections.get(connection_id)
+            if ws:
+                await ws.send_bytes(message_bytes) # Gửi bytes siêu nhanh từ orjson
+                return True
+        except Exception:
+            await self.disconnect(connection_id)
+        return False
+
+    async def send_to_room(self, room: str, message: Dict[str, Any], exclude_connection: str = None):
+        """Bắn dữ liệu song song (Concurrent Broadcast) - Không block luồng"""
+        if room not in self.rooms:
+            return
+            
+        # Nén json 1 lần duy nhất thay vì nén N lần cho N clients
+        message_bytes = orjson.dumps(message)
+        
+        # Copy danh sách client hiện tại để tránh lỗi Dictionary changed size during iteration
+        target_clients = list(self.rooms[room])
+        
+        tasks = [
+            self._safe_send(cid, message_bytes) 
+            for cid in target_clients 
+            if cid != exclude_connection and cid in self.active_connections
+        ]
+        
+        # Kích nổ song song toàn bộ tasks
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+    
+    async def broadcast(self, message: Dict[str, Any]):
+        """Broadcast cho toàn bộ Active Connections"""
+        message_bytes = orjson.dumps(message)
+        target_clients = list(self.active_connections.keys())
+        
+        tasks = [self._safe_send(cid, message_bytes) for cid in target_clients]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     async def connect(self, websocket: WebSocket, connection_id: str, metadata: Dict = None):
         # Note: websocket should be already accepted by the endpoint
@@ -134,39 +174,40 @@ class ConnectionManager:
         }
 
     async def _heartbeat_loop(self):
-        """THỢ RÈN: Quét và giết các kết nối chết mỗi 30 giây (FIX 3)"""
-        logger.info("Starting WebSocket heartbeat loop")
+        """Quét và giết zombie socket an toàn tuyệt đối"""
+        logger.info("🚀 WebSocket Heartbeat Active")
         while True:
             try:
                 await asyncio.sleep(30)
-                dead_connections = []
                 
-                # Copy keys to avoid mutation during iteration
+                # Bắt buộc ép kiểu list() để lấy snapshot keys
                 connection_ids = list(self.active_connections.keys())
                 
+                tasks = []
                 for cid in connection_ids:
                     ws = self.active_connections.get(cid)
-                    if not ws: continue
-                    
-                    try:
-                        # Gửi ping ép client phải phản hồi ở mức TCP
-                        # Dùng send_text thay vì send_json để tiết kiệm 
-                        await asyncio.wait_for(ws.send_text("ping"), timeout=2.0)
-                    except Exception:
-                        logger.warning(f"Zombie socket detected: {cid}. Cleaning up.")
-                        dead_connections.append(cid)
+                    if ws:
+                        # Gửi ping song song bằng gather
+                        tasks.append(self._ping_client(cid, ws))
                 
-                for cid in dead_connections:
-                    await self.disconnect(cid)
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
                     
             except Exception as e:
-                logger.error(f"Error in heartbeat loop: {e}")
-                await asyncio.sleep(1) # Tránh treo vòng lặp
+                logger.error(f"Heartbeat loop crashed: {e}")
+                await asyncio.sleep(1) 
+
+    async def _ping_client(self, cid: str, ws: WebSocket):
+        try:
+            await asyncio.wait_for(ws.send_text("ping"), timeout=2.0)
+        except Exception:
+            logger.warning(f"🧟 Zombie socket detected: {cid}. Terminating.")
+            await self.disconnect(cid)
 
     async def handle_client_message(self, connection_id: str, message: str):
         """Handle messages from WebSocket clients"""
         try:
-            data = json.loads(message)
+            data = orjson.loads(message)
             message_type = data.get('type')
             
             if message_type == 'join_room':
@@ -198,7 +239,7 @@ class ConnectionManager:
             else:
                 logger.warning(f"Unknown message type: {message_type}")
                 
-        except json.JSONDecodeError:
+        except orjson.JSONDecodeError:
             logger.error(f"Invalid JSON from {connection_id}: {message}")
         except Exception as e:
             logger.error(f"Error handling message from {connection_id}: {e}")
@@ -214,7 +255,7 @@ def start_heartbeat():
 
 # FastAPI WebSocket endpoint
 async def websocket_endpoint(websocket: WebSocket):
-    start_heartbeat() # Đảm bảo loop chạy
+    # XÓA DÒNG start_heartbeat() Ở ĐÂY - Ta sẽ chuyển nó vào main.py Lifespan
     await websocket.accept()
     
     try:

@@ -18,10 +18,10 @@ services:
       - montgomery-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      test: ["CMD-SHELL", "pg_isready -U postgres -d montgomery_guardian"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   chroma:
     image: chromadb/chroma:latest
@@ -39,9 +39,9 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
-      interval: 30s
+      interval: 15s
       timeout: 10s
-      retries: 3
+      retries: 5
 
   redis:
     image: redis:7-alpine
@@ -58,26 +58,33 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   backend:
     build: ./backend
     container_name: montgomery-backend
-    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    # THỢ RÈN: Bỏ --reload, ép chạy đa luồng (4 workers) để xử lý Limitless Scale
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 4
     environment:
       - API_KEY=${API_KEY}
       - AI_AGENTS_URL=http://ai-agents:3001
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      # THỢ RÈN: Tiêm trực tiếp chuỗi URL chuẩn vào cấu hình
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
       - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/montgomery_guardian
     ports:
       - "8000:8000"
     depends_on:
-      - postgres
-      - redis
-      - chroma
+      # THỢ RÈN: Ép buộc chờ DB và Cache Healthy 100% mới được boot
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chroma:
+        condition: service_healthy
     networks:
       - montgomery-network
     restart: unless-stopped
@@ -100,7 +107,9 @@ services:
     ports:
       - "3001:3001"
     depends_on:
-      - backend
+      # THỢ RÈN: Đợi Backend API Online hoàn toàn mới chạy Agent
+      backend:
+        condition: service_healthy
     networks:
       - montgomery-network
     restart: unless-stopped

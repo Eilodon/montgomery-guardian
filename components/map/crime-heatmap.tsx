@@ -1,17 +1,90 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { MapboxMap, useMapboxMap } from "./mapbox-map";
 import { CrimeIncident } from "@/shared/types";
 import { Calendar, Clock, TrendingUp, AlertTriangle } from "lucide-react";
 import { useThrottle } from "@/lib/hooks/use-throttle";
 
+// Define types for WebSocket messages
+interface WSMessage {
+  type: string;
+  data?: any;
+}
+
+interface WSCrimeUpdate {
+  type: "crime_update";
+  data: CrimeIncident;
+}
+
+interface WSAuth {
+  type: "auth";
+  key: string;
+}
+
+interface WSSubscribe {
+  type: "subscribe";
+  subscriptions: string[];
+}
+
+type TimeRange = "24h" | "7d" | "30d";
+type FilterRiskLevel = "all" | "critical" | "high" | "medium" | "low";
+
 interface CrimeHeatmapProps {
   className?: string;
   onIncidentClick?: (incident: CrimeIncident) => void;
-  timeRange?: "24h" | "7d" | "30d";
-  onTimeRangeChange?: (range: "24h" | "7d" | "30d") => void;
-  filterRiskLevel?: "all" | "critical" | "high" | "medium" | "low";
+  timeRange?: TimeRange;
+  onTimeRangeChange?: (range: TimeRange) => void;
+  filterRiskLevel?: FilterRiskLevel;
+}
+
+// Helper function to get risk level from incident type
+function getRiskLevel(incidentType: string): string {
+  const riskMapping: { [key: string]: string } = {
+    'burglary': 'high',
+    'theft': 'medium',
+    'assault': 'high',
+    'homicide': 'high',
+    'robbery': 'high',
+    'drug': 'medium',
+    'narcotics': 'medium',
+    'vandalism': 'medium',
+    'other': 'low'
+  };
+  
+  return riskMapping[incidentType.toLowerCase()] || 'low';
+}
+
+// Helper function to get 311 icon
+function get311Icon(serviceType: string): string {
+  const iconMapping: { [key: string]: string } = {
+    'pothole': '🕳️',
+    'graffiti': '🎨',
+    'trash': '🗑️',
+    'flooding': '🌊',
+    'overgrown_grass': '🌱',
+    'street_light': '🚦',
+    'noise_complaint': '📢',
+    'other': '📋'
+  };
+  
+  return iconMapping[serviceType.toLowerCase()] || '📋';
+}
+
+// Helper function to get 311 color
+function get311Color(serviceType: string): string {
+  const colorMapping: { [key: string]: string } = {
+    'pothole': '#ef4444',
+    'graffiti': '#8b5cf',
+    'trash': '#6b7280',
+    'flooding': '#3b82f6',
+    'overgrown_grass': '#228b22',
+    'street_light': '#fbbf24',
+    'noise_complaint': '#eab308',
+    'other': '#64748b'
+  };
+  
+  return colorMapping[serviceType.toLowerCase()] || '#64748b';
 }
 
 export function CrimeHeatmap({
@@ -25,40 +98,68 @@ export function CrimeHeatmap({
   const [crimeData, setCrimeData] = useState<CrimeIncident[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedIncident, setSelectedIncident] = useState<CrimeIncident | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
-  // Load crime data
+  // 1. Initial Load (REST API)
   useEffect(() => {
     const abortController = new AbortController();
-
     const loadCrimeData = async () => {
       setIsLoading(true);
       try {
-        const response = await fetch("/api/v1/crime?limit=500", {
-          signal: abortController.signal
-        });
-
+        const response = await fetch("/api/v1/crime?limit=500", { signal: abortController.signal });
         if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
-
         const apiData = await response.json();
         setCrimeData(apiData.data || []);
       } catch (error: any) {
-        if (error.name === 'AbortError') return;
-
-        console.error("[FATAL] Map Topology sync failed:", error);
-        // THỢ RÈN: KHÔNG DÙNG MOCK DATA. Gán mảng rỗng.
-        setCrimeData([]);
-        // TIP: Có thể dispatch event hiển thị Toast Notification tại đây
+        if (error.name !== 'AbortError') console.error("[FATAL] Init load failed:", error);
       } finally {
-        if (!abortController.signal.aborted) {
-          setIsLoading(false);
-        }
+        if (!abortController.signal.aborted) setIsLoading(false);
       }
     };
-
     loadCrimeData();
-
     return () => abortController.abort();
   }, [timeRange]);
+
+  // 2. THỢ RÈN: Tích hợp WebSocket Real-time
+  useEffect(() => {
+    // Thay NEXT_PUBLIC_WS_URL bằng url thật, ví dụ: "ws://localhost:8000/ws"
+    const wsUrl = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/ws";
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+        console.log("🟢 Live Map Stream Connected");
+        // Auth payload (đúng với backend bạn thiết kế)
+        ws.send(JSON.stringify({ type: "auth", key: process.env.NEXT_PUBLIC_API_KEY || "dev_key_123" }));
+        // Đăng ký room nhận data
+        setTimeout(() => ws.send(JSON.stringify({ type: "subscribe", subscriptions: ["crime_updates"] })), 500);
+    };
+
+    ws.onmessage = (event: MessageEvent) => {
+        try {
+            // Backend WebSocketManager gửi ping dạng text, ta bỏ qua
+            if (event.data === "ping") return;
+            
+            const payload = JSON.parse(event.data) as WSMessage;
+            if (payload.type === "crime_update" && payload.data) {
+                // Hút data mới, đẩy lên đầu mảng, giới hạn 1000 items để chống tràn RAM
+                setCrimeData((prev: CrimeIncident[]) => {
+                    // Tránh duplicate nếu ID đã tồn tại
+                    if (prev.some((c: CrimeIncident) => c.id === payload.data.id)) return prev;
+                    return [payload.data, ...prev].slice(0, 1000); 
+                });
+            }
+        } catch (e) {
+            console.error("WS Parse error", e);
+        }
+    };
+
+    ws.onclose = () => console.warn("🔴 Live Map Stream Disconnected");
+
+    return () => {
+        if (ws.readyState === WebSocket.OPEN) ws.close();
+    };
+  }, []);
 
   // THỢ RÈN: Fix 2 - Thêm bộ giảm xóc WebSocket (Throttling Buffer Frontend)
   const throttledCrimeData = useThrottle(crimeData, 500);
@@ -67,22 +168,21 @@ export function CrimeHeatmap({
   const crimeGeoJson = useMemo(() => {
     if (throttledCrimeData.length === 0) return null;
 
-    const filteredData = throttledCrimeData.filter(incident => {
+    const filteredData = throttledCrimeData.filter((incident: CrimeIncident) => {
       const incidentTime = new Date(incident.timestamp);
       const now = new Date();
-      const timeDiff = now.getTime() - incidentTime.getTime();
 
       // Time range filter
       let timeFilter = true;
       switch (timeRange) {
         case "24h":
-          timeFilter = timeDiff <= 24 * 60 * 60 * 1000;
+          timeFilter = (now.getTime() - incidentTime.getTime()) <= 24 * 60 * 60 * 1000;
           break;
         case "7d":
-          timeFilter = timeDiff <= 7 * 24 * 60 * 60 * 1000;
+          timeFilter = (now.getTime() - incidentTime.getTime()) <= 7 * 24 * 60 * 60 * 1000;
           break;
         case "30d":
-          timeFilter = timeDiff <= 30 * 24 * 60 * 60 * 1000;
+          timeFilter = (now.getTime() - incidentTime.getTime()) <= 30 * 24 * 60 * 60 * 1000;
           break;
       }
 
@@ -98,24 +198,23 @@ export function CrimeHeatmap({
 
     return {
       type: "FeatureCollection" as const,
-      features: filteredData.map((crime) => ({
-        type: "Feature" as const,
+      features: filteredData.map((incident: CrimeIncident) => ({
+        type: "Feature",
         properties: {
-          ...crime,
-          riskLevel: getRiskLevel(crime.type),
-          intensity: getRiskLevel(crime.type) === "critical" ? 1 :
-            getRiskLevel(crime.type) === "high" ? 0.75 :
-              getRiskLevel(crime.type) === "medium" ? 0.5 : 0.25
+          id: incident.id,
+          type: incident.type,
+          riskLevel: getRiskLevel(incident.type),
+          description: incident.description,
+          timestamp: incident.timestamp,
+          coordinates: [incident.longitude, incident.latitude],
         },
         geometry: {
-          type: "Point" as const,
-          coordinates: [crime.longitude, crime.latitude],
+          type: "Point",
+          coordinates: [incident.longitude, incident.latitude],
         },
       })),
     };
   }, [throttledCrimeData, timeRange, filterRiskLevel]);
-
-  // Remove the problematic useEffect that called addCrimeHeatmapLayer directly
 
   // Handle map click for incident details
   const handleMapClick = (event: any) => {
@@ -129,20 +228,6 @@ export function CrimeHeatmap({
       const incident = features[0].properties as CrimeIncident;
       setSelectedIncident(incident);
       onIncidentClick?.(incident);
-    }
-  };
-
-  // Get risk level based on crime type
-  const getRiskLevel = (type: CrimeIncident["type"]): "critical" | "high" | "medium" | "low" => {
-    switch (type) {
-      case "violent":
-        return "critical";
-      case "property":
-        return "high";
-      case "drug":
-        return "medium";
-      default:
-        return "low";
     }
   };
 
