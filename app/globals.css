@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: #0F172A;
+  --color-foreground: #F8FAFC;
+  --color-card: #1E293B;
+  --color-card-foreground: #F8FAFC;
+  --color-muted: #334155;
+  --color-muted-foreground: #94A3B8;
+  --color-border: #334155;
+  --color-danger: #EF4444;
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+  --color-accent: #3B82F6;
+  --radius: 0.75rem;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+}
+
+/* Light theme override cho các page cụ thể */
+.theme-light {
+  --color-background: #FFFFFF;
+  --color-foreground: #0F172A;
+  --color-card: #F8FAFC;
+  --color-card-foreground: #0F172A;
+  --color-muted: #F1F5F9;
+  --color-muted-foreground: #64748B;
+  --color-border: #E2E8F0;
+}
+
+/* Slide-in from top animation for alerts */
+@keyframes slide-in-top {
+  0% {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-in-top {
+  animation: slide-in-top 300ms ease-out forwards;
+}

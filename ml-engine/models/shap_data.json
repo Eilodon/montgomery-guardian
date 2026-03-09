@@ -1,0 +1,42 @@
+{
+  "features": [
+    {
+      "name": "Hour of Day",
+      "importance": 0.15,
+      "category": "temporal"
+    },
+    {
+      "name": "Day of Week",
+      "importance": 0.12,
+      "category": "temporal"
+    },
+    {
+      "name": "Distance to Downtown",
+      "importance": 0.18,
+      "category": "spatial"
+    },
+    {
+      "name": "Crime Count (7 days)",
+      "importance": 0.22,
+      "category": "temporal"
+    },
+    {
+      "name": "311 Requests (30 days)",
+      "importance": 0.2,
+      "category": "311"
+    },
+    {
+      "name": "Weather Temperature",
+      "importance": 0.08,
+      "category": "weather"
+    },
+    {
+      "name": "Is Weekend",
+      "importance": 0.05,
+      "category": "temporal"
+    }
+  ],
+  "modelType": "ensemble",
+  "totalFeatures": 7,
+  "generatedAt": "2026-03-06T18:44:40.445626"
+}

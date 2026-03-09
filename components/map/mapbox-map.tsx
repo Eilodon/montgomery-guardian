@@ -1,0 +1,458 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
+import { useMapData } from "./map-data-context";
+
+interface MapboxMapProps {
+  children?: React.ReactNode;
+  className?: string;
+  initialViewState?: {
+    longitude: number;
+    latitude: number;
+    zoom: number;
+  };
+  onMapLoad?: (map: mapboxgl.Map) => void;
+  onMapClick?: (event: mapboxgl.MapMouseEvent) => void;
+  crimeData?: any[];
+  crimeGeoJson?: any;
+  requests311?: any[];
+  showHeatmap?: boolean;
+  show311Points?: boolean;
+}
+
+// Montgomery, Alabama coordinates
+const MONTGOMERY_CENTER = [-86.2792, 32.3617] as [number, number];
+
+export function MapboxMap({
+  children,
+  className = "",
+  initialViewState = {
+    longitude: MONTGOMERY_CENTER[0],
+    latitude: MONTGOMERY_CENTER[1],
+    zoom: 12,
+  },
+  onMapLoad,
+  onMapClick,
+  crimeData,
+  crimeGeoJson,
+  requests311,
+  showHeatmap = false,
+  show311Points = false,
+}: MapboxMapProps) {
+  const { crimeData: contextCrimeData, requests311: contextRequests311 } = useMapData();
+
+  // Use props if provided, otherwise fallback to context
+  const effectiveCrimeData = crimeData ?? contextCrimeData;
+  const effectiveRequests311 = requests311 ?? contextRequests311;
+
+  const mapContainer = useRef<HTMLDivElement>(null);
+  const map = useRef<mapboxgl.Map | null>(null);
+  const [mapLoaded, setMapLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!mapContainer.current || map.current) return;
+
+    // Get Mapbox access token from environment
+    const mapboxToken = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
+    if (!mapboxToken) {
+      console.error("Mapbox access token is required");
+      return;
+    }
+
+    // Set the access token
+    mapboxgl.accessToken = mapboxToken;
+
+    // Create popup for downtown marker (accessible for cleanup)
+    const popup = new mapboxgl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 25,
+    });
+
+    // Initialize the map
+    const mapInstance = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: "mapbox://styles/mapbox/dark-v11", // Dark theme for dashboard
+      center: [initialViewState.longitude, initialViewState.latitude],
+      zoom: initialViewState.zoom,
+      pitch: 0,
+      bearing: 0,
+      attributionControl: false, // Hide attribution for cleaner look
+    });
+
+    // Add navigation controls
+    mapInstance.addControl(new mapboxgl.NavigationControl(), "top-right");
+
+    // Add scale control
+    mapInstance.addControl(
+      new mapboxgl.ScaleControl({
+        maxWidth: 80,
+        unit: "metric",
+      }),
+      "bottom-left"
+    );
+
+    // Handle map load
+    mapInstance.on("load", () => {
+      console.log("Mapbox map loaded successfully");
+      setMapLoaded(true);
+      onMapLoad?.(mapInstance);
+
+      // Add Montgomery city boundaries (simplified)
+      mapInstance.addSource("montgomery-boundary", {
+        type: "geojson",
+        data: {
+          type: "Feature",
+          properties: {},
+          geometry: {
+            type: "Polygon",
+            coordinates: [
+              [
+                // Simplified Montgomery boundary coordinates
+                [-86.35, 32.45],
+                [-86.15, 32.45],
+                [-86.15, 32.25],
+                [-86.35, 32.25],
+                [-86.35, 32.45],
+              ],
+            ],
+          },
+        },
+      });
+
+      // Add boundary layer
+      mapInstance.addLayer({
+        id: "montgomery-boundary-fill",
+        type: "fill",
+        source: "montgomery-boundary",
+        paint: {
+          "fill-color": "#3b82f6",
+          "fill-opacity": 0.05,
+        },
+      });
+
+      mapInstance.addLayer({
+        id: "montgomery-boundary-line",
+        type: "line",
+        source: "montgomery-boundary",
+        paint: {
+          "line-color": "#3b82f6",
+          "line-width": 2,
+          "line-opacity": 0.3,
+        },
+      });
+
+      // Add downtown marker
+      mapInstance.addSource("downtown-marker", {
+        type: "geojson",
+        data: {
+          type: "Feature",
+          properties: {
+            title: "Downtown Montgomery",
+            description: "City center and business district",
+          },
+          geometry: {
+            type: "Point",
+            coordinates: MONTGOMERY_CENTER,
+          },
+        },
+      });
+
+      mapInstance.addLayer({
+        id: "downtown-marker",
+        type: "circle",
+        source: "downtown-marker",
+        paint: {
+          "circle-radius": 8,
+          "circle-color": "#f59e0b",
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 2,
+        },
+      });
+
+      mapInstance.on("mouseenter", "downtown-marker", (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.geometry) return;
+
+        // Use type assertion to bypass lint error
+        const geometry = feature.geometry as any;
+        const coordinates = geometry.coordinates as [number, number];
+        const description = feature.properties?.description;
+
+        if (coordinates && description) {
+          popup.setLngLat(coordinates).setHTML(`<strong>Downtown Montgomery</strong><br>${description}`).addTo(mapInstance);
+        }
+      });
+
+      mapInstance.on("mouseleave", "downtown-marker", () => {
+        popup.remove();
+      });
+    });
+
+    // Handle map click
+    if (onMapClick) {
+      mapInstance.on("click", onMapClick);
+    }
+
+    // Handle errors
+    mapInstance.on("error", (e) => {
+      console.error("Mapbox error:", e);
+    });
+
+    // Store map instance
+    map.current = mapInstance;
+
+    // Cleanup
+    return () => {
+      popup.remove();
+      map.current?.remove();
+      map.current = null;
+    };
+  }, []);
+
+  // Update map view when initialViewState changes
+  useEffect(() => {
+    if (map.current && mapLoaded) {
+      map.current.flyTo({
+        center: [initialViewState.longitude, initialViewState.latitude],
+        zoom: initialViewState.zoom,
+        duration: 1000,
+      });
+    }
+  }, [initialViewState, mapLoaded]);
+
+  // THỢ RÈN: Handle layers bằng Visibility (Zero-Rebuild)
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return;
+    const m = map.current;
+
+    // Heatmap handling
+    if (showHeatmap && (crimeGeoJson || effectiveCrimeData)) {
+      addCrimeHeatmapLayer(m, crimeGeoJson || effectiveCrimeData, "crime-heatmap");
+      if (m.getLayer("crime-heatmap-circles")) {
+        m.setLayoutProperty("crime-heatmap-circles", "visibility", "visible");
+      }
+    } else if (!showHeatmap && m.getLayer("crime-heatmap-circles")) {
+      // KHÔNG REMOVE LAYER - CHỈ ẨN ĐI ĐỂ GIỮ CACHE GPU
+      m.setLayoutProperty("crime-heatmap-circles", "visibility", "none");
+    }
+
+    // 311 Points handling
+    if (show311Points && effectiveRequests311) {
+      add311MarkersLayer(m, effectiveRequests311);
+      if (m.getLayer("311-markers-symbols")) {
+        m.setLayoutProperty("311-markers-symbols", "visibility", "visible");
+      }
+    } else if (!show311Points && m.getLayer("311-markers-symbols")) {
+      m.setLayoutProperty("311-markers-symbols", "visibility", "none");
+    }
+  }, [mapLoaded, effectiveCrimeData, crimeGeoJson, effectiveRequests311, showHeatmap, show311Points]);
+
+  return (
+    <div className={`relative w-full h-full ${className}`}>
+      <div ref={mapContainer} className="w-full h-full" />
+
+      {/* Loading indicator */}
+      {!mapLoaded && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
+          <div className="text-center">
+            <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+            <p className="text-sm text-slate-400">Loading map...</p>
+          </div>
+        </div>
+      )}
+
+      {/* Error fallback */}
+      {!process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN && (
+        <div className="absolute inset-0 flex items-center justify-center bg-slate-900">
+          <div className="text-center p-6">
+            <p className="text-red-400 mb-2">Mapbox access token is required</p>
+            <p className="text-sm text-slate-400">
+              Please add NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN to your environment variables
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Render children (overlays, controls, etc.) */}
+      {mapLoaded && children}
+    </div>
+  );
+}
+
+// Hook to get map instance
+export function useMapboxMap() {
+  const [map, setMap] = useState<mapboxgl.Map | null>(null);
+
+  return { map, setMap };
+}
+
+export function addCrimeHeatmapLayer(
+  map: mapboxgl.Map,
+  data: any, // Nhận trực tiếp mảng hoặc GeoJSON
+  layerId: string = "crime-heatmap"
+) {
+  if (!map.isStyleLoaded()) {
+    map.once("styledata", () => addCrimeHeatmapLayer(map, data, layerId));
+    return;
+  }
+
+  // TỐI ƯU: Nếu đã là GeoJSON (từ useMemo) thì dùng luôn, không map lại nữa
+  const sourceData: mapboxgl.GeoJSONSourceSpecification["data"] = 
+    (data && data.type === "FeatureCollection") 
+      ? data 
+      : {
+          type: "FeatureCollection",
+          features: (data as any[] || []).map((crime) => ({
+            type: "Feature",
+            properties: {
+              ...crime,
+              intensity: crime.riskLevel === "critical" ? 1 : 
+                         crime.riskLevel === "high" ? 0.75 : 
+                         crime.riskLevel === "medium" ? 0.5 : 0.25,
+            },
+            geometry: {
+              type: "Point",
+              coordinates: [crime.longitude, crime.latitude],
+            },
+          })),
+        };
+
+  const existingSource = map.getSource(layerId) as mapboxgl.GeoJSONSource | undefined;
+
+  if (!existingSource) {
+    map.addSource(layerId, { type: "geojson", data: sourceData });
+    map.addLayer(
+      {
+        id: `${layerId}-circles`,
+        type: "circle",
+        source: layerId,
+        layout: {
+            "visibility": "visible" // Thêm layout visibility
+        },
+        paint: {
+          "circle-radius": [
+            "interpolate", ["linear"], ["zoom"],
+            8, ["*", 10, ["get", "intensity"]],
+            15, ["*", 30, ["get", "intensity"]],
+          ],
+          "circle-color": [
+            "interpolate", ["linear"], ["get", "intensity"],
+            0, "#10b981", 
+            0.25, "#eab308", 
+            0.5, "#f97316", 
+            0.75, "#ef4444", 
+            1, "#dc2626", 
+          ],
+          "circle-opacity": 0.6,
+          "circle-stroke-color": "#ffffff",
+          "circle-stroke-width": 1,
+          "circle-stroke-opacity": 0.3,
+        },
+      },
+      "montgomery-boundary-fill"
+    );
+  } else {
+    // Ép kiểu an toàn và cập nhật data không giật lag
+    existingSource.setData(sourceData as GeoJSON.FeatureCollection);
+  }
+}
+
+// Helper function to add 311 markers layer
+export function add311MarkersLayer(
+  map: mapboxgl.Map,
+  requests311: any[],
+  layerId: string = "311-markers"
+) {
+  if (!map.getSource(layerId)) {
+    map.addSource(layerId, {
+      type: "geojson",
+      data: {
+        type: "FeatureCollection",
+        features: requests311.map((request) => ({
+          type: "Feature",
+          properties: {
+            ...request,
+            icon: get311Icon(request.serviceType),
+            color: get311Color(request.serviceType),
+          },
+          geometry: {
+            type: "Point",
+            coordinates: [request.longitude, request.latitude],
+          },
+        })),
+      },
+    });
+
+    map.addLayer(
+      {
+        id: `${layerId}-symbols`,
+        type: "symbol",
+        source: layerId,
+        layout: {
+          "icon-image": ["get", "icon"],
+          "icon-size": 1.2,
+          "icon-allow-overlap": true,
+          "text-field": ["get", "serviceType"],
+          "text-font": ["Open Sans Regular"],
+          "text-size": 10,
+          "text-offset": [0, 2],
+          "text-anchor": "top",
+          "visibility": "visible" // Thêm layout visibility
+        },
+        paint: {
+          "text-color": "#ffffff",
+          "text-halo-color": "#000000",
+          "text-halo-width": 1,
+        },
+      },
+      "montgomery-boundary-fill"
+    );
+  } else {
+    // Update existing source
+    const source = map.getSource(layerId) as mapboxgl.GeoJSONSource;
+    if (source) {
+      source.setData({
+        type: "FeatureCollection",
+        features: requests311.map((request) => ({
+          type: "Feature",
+          properties: {
+            ...request,
+            icon: get311Icon(request.serviceType),
+            color: get311Color(request.serviceType),
+          },
+          geometry: {
+            type: "Point",
+            coordinates: [request.longitude, request.latitude],
+          },
+        })),
+      });
+    }
+  }
+}
+
+function get311Icon(serviceType: string): string {
+  const iconMap: Record<string, string> = {
+    pothole: "🚧",
+    graffiti: "🎨",
+    trash: "🗑️",
+    flooding: "💧",
+    overgrown_grass: "🌿",
+    other: "📋",
+  };
+  return iconMap[serviceType] || iconMap.other;
+}
+
+function get311Color(serviceType: string): string {
+  const colorMap: Record<string, string> = {
+    pothole: "#ef4444",
+    graffiti: "#8b5cf6",
+    trash: "#f97316",
+    flooding: "#3b82f6",
+    overgrown_grass: "#10b981",
+    other: "#6b7280",
+  };
+  return colorMap[serviceType] || colorMap.other;
+}

@@ -1,0 +1,129 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgis/postgis:15-3.3
+    container_name: montgomery-postgres
+    environment:
+      POSTGRES_DB: montgomery_guardian
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+    networks:
+      - montgomery-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d montgomery_guardian"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: montgomery-chroma
+    ports:
+      - "8002:8000"
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_HTTP_PORT=8000
+      - CHROMA_LOG_VERBOSE=INFO
+    networks:
+      - montgomery-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: montgomery-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    # [THỢ RÈN] Xóa ports: - "6379:6379" để ngăn chặn tranh giành cổng với local Redis. Backend truy xuất qua bridge network "redis"
+    volumes:
+      - redis_data:/data
+    networks:
+      - montgomery-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: montgomery-backend
+    # THỢ RÈN: Bỏ --reload, ép chạy đa luồng (4 workers) để xử lý Limitless Scale
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --workers 4
+    environment:
+      - API_KEY=${API_KEY}
+      - AI_AGENTS_URL=http://ai-agents:3001
+      - BRIGHT_DATA_API_TOKEN=${BRIGHT_DATA_API_TOKEN}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      # THỢ RÈN: Tiêm trực tiếp chuỗi URL chuẩn vào cấu hình
+      - REDIS_URL=redis://:${REDIS_PASSWORD}@redis:6379/0
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/montgomery_guardian
+    ports:
+      - "8000:8000"
+    depends_on:
+      # THỢ RÈN: Ép buộc chờ DB và Cache Healthy 100% mới được boot
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      chroma:
+        condition: service_started
+    networks:
+      - montgomery-network
+    restart: unless-stopped
+    healthcheck:
+      # [THỢ RÈN] Dùng python native thay vì curl (slim image không có curl)
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ai-agents:
+    build:
+      context: .
+      dockerfile: ai-agents/Dockerfile
+    container_name: montgomery-ai-agents
+    environment:
+      - PORT=3001
+      - API_KEY=${API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - BACKEND_API_URL=http://backend:8000
+    ports:
+      - "3001:3001"
+    depends_on:
+      # THỢ RÈN: Đợi Backend API Online hoàn toàn mới chạy Agent
+      backend:
+        condition: service_healthy
+    networks:
+      - montgomery-network
+    restart: unless-stopped
+    healthcheck:
+      # [THỢ RÈN] Dùng node native thay vì curl (alpine image không có curl)
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  postgres_data:
+  chroma_data:
+  redis_data:
+
+networks:
+  montgomery-network:
+    driver: bridge

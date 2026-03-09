@@ -1,0 +1,18 @@
+[Unit]
+Description=Montgomery Guardian ETL Pipeline
+After=network.target postgresql.service redis.service
+Wants=postgresql.service redis.service
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/media/ybao/DATA1/b1/montgomery-guardian/backend
+Environment=PATH=/media/ybao/DATA1/b1/montgomery-guardian/backend/venv/bin
+ExecStart=/media/ybao/DATA1/b1/montgomery-guardian/backend/venv/bin/python etl/run_scheduler.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

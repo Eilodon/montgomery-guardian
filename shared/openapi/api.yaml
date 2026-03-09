@@ -1,0 +1,297 @@
+# shared/openapi/api.yaml
+openapi: 3.0.0
+info:
+  title: Montgomery Guardian API
+  version: 1.0.0
+  description: Backend API for Montgomery Guardian platform
+
+servers:
+  - url: https://montgomery-guardian-api.replit.app
+    description: Production (Replit)
+  - url: http://localhost:8000
+    description: Local development
+
+paths:
+  /api/v1/crime:
+    get:
+      summary: Get crime incidents
+      parameters:
+        - name: neighborhood
+          in: query
+          schema: { type: string }
+        - name: from_date
+          in: query
+          schema: { type: string, format: date }
+        - name: to_date
+          in: query
+          schema: { type: string, format: date }
+        - name: type
+          in: query
+          schema: { type: string, enum: [violent, property, drug, other] }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 100 }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/CrimeIncident' } }
+                  total: { type: integer }
+
+  /api/v1/requests-311:
+    get:
+      summary: Get 311 service requests
+      parameters:
+        - name: neighborhood
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string, enum: [open, in_progress, closed] }
+        - name: service_type
+          in: query
+          schema: { type: string }
+        - name: radius_meters
+          in: query
+          schema: { type: number }
+        - name: lat
+          in: query
+          schema: { type: number }
+        - name: lng
+          in: query
+          schema: { type: number }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { $ref: '#/components/schemas/ServiceRequest311' } }
+                  total: { type: integer }
+
+  /api/v1/predictions:
+    get:
+      summary: Get crime risk predictions
+      parameters:
+        - name: hours_ahead
+          in: query
+          schema: { type: integer, enum: [24, 48, 168] }
+        - name: neighborhood
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  predictions: { type: array, items: { $ref: '#/components/schemas/RiskPrediction' } }
+                  generated_at: { type: string }
+
+  /api/v1/alerts:
+    get:
+      summary: Get real-time alerts (Bright Data scraped)
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alerts: { type: array, items: { $ref: '#/components/schemas/AlertItem' } }
+
+  /api/v1/kpis:
+    get:
+      summary: Get KPI dashboard data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KPIData' }
+
+  /api/v1/districts:
+    get:
+      summary: Get district safety data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DistrictData' }
+
+  /api/v1/predictions/heatmap:
+    get:
+      summary: Get heatmap data for map visualization
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    latitude: { type: number }
+                    longitude: { type: number }
+                    intensity: { type: number }
+
+  /api/v1/predictions/explain:
+    get:
+      summary: Get SHAP explainability data
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  features: { type: array, items: { type: object } }
+                  globalImportance: { type: object }
+
+  /api/v1/chat:
+    post:
+      summary: Multi-agent chat endpoint
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message, history]
+              properties:
+                message: { type: string }
+                history: { type: array, items: { $ref: '#/components/schemas/AgentMessage' } }
+                userLocation:
+                  type: object
+                  properties:
+                    lat: { type: number }
+                    lng: { type: number }
+                language: { type: string, enum: [en, es, vi], default: en }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentMessage' }
+
+  /api/v1/vision/analyze:
+    post:
+      summary: Analyze photo for 311 report
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                image:
+                  type: string
+                  format: binary
+                lat: { type: number }
+                lng: { type: number }
+      responses:
+        '200':
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VisionAnalysisResult' }
+
+components:
+  schemas:
+    CrimeIncident:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+        neighborhood: { type: string }
+        timestamp: { type: string }
+        status: { type: string }
+    ServiceRequest311:
+      type: object
+      properties:
+        requestId: { type: string }
+        serviceType: { type: string }
+        status: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+        address: { type: string }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+    RiskPrediction:
+      type: object
+      properties:
+        gridCellId: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+        riskLevel: { type: string }
+        confidenceScore: { type: number }
+        forecastHours: { type: integer }
+        shapFeatures: { type: object }
+    AlertItem:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        summary: { type: string }
+        severity: { type: string }
+        source: { type: string }
+        timestamp: { type: string }
+    AgentMessage:
+      type: object
+      properties:
+        role: { type: string }
+        content: { type: string }
+        agentType: { type: string }
+        timestamp: { type: string }
+    VisionAnalysisResult:
+      type: object
+      properties:
+        incidentType: { type: string }
+        severity: { type: string }
+        confidence: { type: number }
+        description: { type: string }
+        prefilledForm: { type: object }
+    KPIData:
+      type: object
+      properties:
+        incidentsToday:
+          type: object
+          properties:
+            count: { type: integer }
+            trend:
+              type: object
+              properties:
+                direction: { type: string, enum: [up, down] }
+                percentage: { type: number }
+        calls911:
+          type: object
+          properties:
+            count: { type: integer }
+            sparklineData: { type: array, items: { type: number } }
+        open311Requests:
+          type: object
+          properties:
+            count: { type: integer }
+            topCategory: { type: string }
+        avgResponseTime:
+          type: object
+          properties:
+            minutes: { type: number }
+            trend:
+              type: object
+              properties:
+                direction: { type: string, enum: [up, down] }
+                percentage: { type: number }
+    DistrictData:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        grade: { type: string, enum: [A, B, C, D, F] }
+        crimeIndex: { type: number }
+        backlog311: { type: integer }
+        trend: { type: number }

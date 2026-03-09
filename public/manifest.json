@@ -1,0 +1,26 @@
+{
+  "name": "Montgomery Guardian",
+  "short_name": "Montgomery Guardian",
+  "description": "Your AI safety companion for Montgomery",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1E3A5F",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "categories": ["utilities", "safety", "government"],
+  "lang": "en",
+  "scope": "/",
+  "prefer_related_applications": false
+}

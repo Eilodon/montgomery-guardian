@@ -1,0 +1,19 @@
+[Unit]
+Description=Montgomery Guardian ETL Pipeline
+After=network.target postgresql.service redis.service
+Wants=postgresql.service redis.service
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/montgomery-guardian/backend
+Environment=PATH=/var/www/montgomery-guardian/backend/venv/bin:/usr/local/bin
+EnvironmentFile=/etc/montgomery.env
+ExecStart=/var/www/montgomery-guardian/backend/venv/bin/python -m etl.run_scheduler
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

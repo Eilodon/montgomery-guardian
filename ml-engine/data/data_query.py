@@ -1,0 +1,274 @@
+# ml-engine/data/data_query.py
+import pandas as pd
+import numpy as np
+from sqlalchemy import create_engine, text
+from typing import Tuple, Dict, Any
+import logging
+from datetime import datetime, timedelta
+import os
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def get_database_url() -> str:
+    """Get database URL from environment or default to PostgreSQL"""
+    # Default PostgreSQL connection
+    return os.getenv('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/montgomery_guardian')
+
+def query_crime_data(engine) -> pd.DataFrame:
+    """Query crime incidents from PostGIS database with pushdown aggregation"""
+    logger.info("Querying crime incidents data with PostGIS aggregation...")
+    
+    # THỢ RÈN: Pushdown aggregation using ST_SnapToGrid
+    query = """
+    WITH grid_cells AS (
+        SELECT 
+            ST_SnapToGrid(ST_SetSRID(ST_MakePoint(longitude, latitude), 4326), 0.0045, 0.0045) as grid_point,
+            crimetype,
+            incidentdate,
+            status,
+            -- Extract temporal features at database level
+            EXTRACT(HOUR FROM incidentdate) as hour,
+            EXTRACT(DOW FROM incidentdate) as day_of_week,
+            EXTRACT(MONTH FROM incidentdate) as month,
+            EXTRACT(QUARTER FROM incidentdate) as quarter,
+            EXTRACT(DOY FROM incidentdate) as day_of_year,
+            EXTRACT(WEEK FROM incidentdate) as week_of_year,
+            CASE WHEN EXTRACT(DOW FROM incidentdate) IN (5, 6) THEN 1 ELSE 0 END as is_weekend,
+            CASE WHEN EXTRACT(HOUR FROM incidentdate) BETWEEN 20 AND 23 THEN 1 ELSE 0 END as is_night,
+            CASE WHEN EXTRACT(HOUR FROM incidentdate) BETWEEN 9 AND 17 THEN 1 ELSE 0 END as is_business_hours,
+            -- Distance to downtown Montgomery (32.3617, -86.2792)
+            ST_Distance(
+                ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography,
+                ST_SetSRID(ST_MakePoint(-86.2792, 32.3617), 4326)::geography
+            ) as distance_to_downtown
+        FROM crime_incidents 
+        WHERE incidentdate >= CURRENT_DATE - INTERVAL '90 days'
+    ),
+    aggregated_grids AS (
+        SELECT 
+            ST_X(grid_point) as longitude,
+            ST_Y(grid_point) as latitude,
+            grid_point,
+            -- Aggregate counts per grid
+            COUNT(*) as crime_count_90d,
+            COUNT(*) FILTER (WHERE incidentdate >= CURRENT_DATE - INTERVAL '7 days') as crime_count_7d,
+            COUNT(*) FILTER (WHERE incidentdate >= CURRENT_DATE - INTERVAL '30 days') as crime_count_30d,
+            -- Crime type aggregations
+            COUNT(*) FILTER (WHERE crimetype ILIKE '%assault%' OR crimetype ILIKE '%robbery%' OR crimetype ILIKE '%homicide%') as crime_type_violent_7d,
+            COUNT(*) FILTER (WHERE crimetype ILIKE '%burglary%' OR crimetype ILIKE '%theft%' OR crimetype ILIKE '%larceny%') as crime_type_property_7d,
+            COUNT(*) FILTER (WHERE crimetype ILIKE '%drug%' OR crimetype ILIKE '%narcotic%') as crime_type_drug_7d,
+            COUNT(*) FILTER (WHERE crimetype ILIKE '%other%' OR crimetype NOT ILIKE '%assault%' AND crimetype NOT ILIKE '%robbery%' AND crimetype NOT ILIKE '%homicide%' AND crimetype NOT ILIKE '%burglary%' AND crimetype NOT ILIKE '%theft%' AND crimetype NOT ILIKE '%larceny%' AND crimetype NOT ILIKE '%drug%' AND crimetype NOT ILIKE '%narcotic%') as crime_type_other_7d,
+            -- Temporal features (use most recent record)
+            MAX(hour) as hour,
+            MAX(day_of_week) as day_of_week,
+            MAX(month) as month,
+            MAX(quarter) as quarter,
+            MAX(day_of_year) as day_of_year,
+            MAX(week_of_year) as week_of_year,
+            MAX(is_weekend) as is_weekend,
+            MAX(is_night) as is_night,
+            MAX(is_business_hours) as is_business_hours,
+            AVG(distance_to_downtown) as distance_to_downtown
+        FROM grid_cells
+        GROUP BY grid_point, ST_X(grid_point), ST_Y(grid_point)
+    )
+    SELECT 
+        longitude,
+        latitude,
+        crime_count_90d,
+        crime_count_7d,
+        crime_count_30d,
+        crime_type_violent_7d,
+        crime_type_property_7d,
+        crime_type_drug_7d,
+        crime_type_other_7d,
+        hour,
+        day_of_week,
+        month,
+        quarter,
+        day_of_year,
+        week_of_year,
+        is_weekend,
+        is_night,
+        is_business_hours,
+        distance_to_downtown
+    FROM aggregated_grids
+    ORDER BY crime_count_7d DESC, crime_count_30d DESC
+    """
+    
+    try:
+        df = pd.read_sql(query, engine)
+        logger.info(f"✅ Retrieved {len(df)} aggregated grid cells")
+        
+        # Convert to appropriate types
+        numeric_cols = ['crime_count_90d', 'crime_count_7d', 'crime_count_30d', 
+                        'crime_type_violent_7d', 'crime_type_property_7d', 'crime_type_drug_7d', 'crime_type_other_7d',
+                        'hour', 'day_of_week', 'month', 'quarter', 'day_of_year', 'week_of_year',
+                        'is_weekend', 'is_night', 'is_business_hours', 'distance_to_downtown']
+        
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        
+        return df
+    except Exception as e:
+        logger.error(f"❌ Failed to query aggregated crime data: {e}")
+        return pd.DataFrame()
+
+def query_311_data(engine) -> pd.DataFrame:
+    """Query 311 service requests from PostGIS database"""
+    logger.info("Querying 311 service requests data...")
+    
+    query = """
+    SELECT 
+        objectid,
+        servicetype,
+        latitude,
+        longitude,
+        address,
+        datecreated,
+        datemodified,
+        status,
+        description,
+        estimatedresolution
+    FROM service_requests_311 
+    WHERE datecreated >= CURRENT_DATE - INTERVAL '90 days'
+    ORDER BY datecreated DESC
+    """
+    
+    try:
+        df = pd.read_sql(query, engine)
+        logger.info(f"✅ Retrieved {len(df)} 311 service request records")
+        
+        # Convert timestamp columns
+        df['datecreated'] = pd.to_datetime(df['datecreated'])
+        if 'datemodified' in df.columns:
+            df['datemodified'] = pd.to_datetime(df['datemodified'])
+        
+        # Add derived columns
+        df['year'] = df['datecreated'].dt.year
+        df['month'] = df['datecreated'].dt.month
+        df['day'] = df['datecreated'].dt.day
+        df['hour'] = df['datecreated'].dt.hour
+        df['day_of_week'] = df['datecreated'].dt.dayofweek
+        
+        return df
+    except Exception as e:
+        logger.error(f"❌ Failed to query 311 data: {e}")
+        return pd.DataFrame()
+
+def validate_data(crime_df: pd.DataFrame, requests_df: pd.DataFrame) -> bool:
+    """Validate loaded data"""
+    logger.info("Validating data...")
+    
+    # Check minimum data requirements
+    if len(crime_df) < 50:
+        logger.warning(f"⚠️ Low crime data count: {len(crime_df)} records")
+    
+    if len(requests_df) < 50:
+        logger.warning(f"⚠️ Low 311 data count: {len(requests_df)} records")
+    
+    # Check required columns
+    required_crime_cols = ['crimetype', 'latitude', 'longitude', 'incidentdate']
+    missing_crime_cols = [col for col in required_crime_cols if col not in crime_df.columns]
+    if missing_crime_cols:
+        logger.error(f"❌ Missing crime columns: {missing_crime_cols}")
+        return False
+    
+    required_request_cols = ['servicetype', 'latitude', 'longitude', 'datecreated']
+    missing_request_cols = [col for col in required_request_cols if col not in requests_df.columns]
+    if missing_request_cols:
+        logger.error(f"❌ Missing request columns: {missing_request_cols}")
+        return False
+    
+    # Check for valid coordinates
+    invalid_crime_coords = crime_df[(crime_df['latitude'].isna()) | (crime_df['longitude'].isna())]
+    if len(invalid_crime_coords) > 0:
+        logger.warning(f"⚠️ Found {len(invalid_crime_coords)} crime records with invalid coordinates")
+    
+    invalid_request_coords = requests_df[(requests_df['latitude'].isna()) | (requests_df['longitude'].isna())]
+    if len(invalid_request_coords) > 0:
+        logger.warning(f"⚠️ Found {len(invalid_request_coords)} request records with invalid coordinates")
+    
+    logger.info("✅ Data validation completed")
+    return True
+
+def get_real_data() -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Main function to get real data from PostGIS database
+    Returns: (crime_df, requests_df)
+    """
+    logger.info("Starting real data extraction...")
+    
+    # Get database connection
+    database_url = get_database_url()
+    logger.info(f"Connecting to database: {database_url.split('@')[-1]}...")
+    
+    try:
+        engine = create_engine(database_url)
+        
+        # Test connection
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT 1"))
+            logger.info("✅ Database connection successful")
+        
+        # Query data
+        crime_df = query_crime_data(engine)
+        requests_df = query_311_data(engine)
+        
+        # Validate data
+        if not validate_data(crime_df, requests_df):
+            raise ValueError("Data validation failed")
+        
+        logger.info(f"✅ Successfully retrieved real data:")
+        logger.info(f"   - Crime incidents: {len(crime_df)} records")
+        logger.info(f"   - 311 requests: {len(requests_df)} records")
+        logger.info(f"   - Date range: {crime_df['incidentdate'].min()} to {crime_df['incidentdate'].max()}")
+        
+        return crime_df, requests_df
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to get real data: {e}")
+        raise
+
+def get_data_summary(crime_df: pd.DataFrame, requests_df: pd.DataFrame) -> Dict[str, Any]:
+    """Generate data summary statistics"""
+    summary = {
+        'crime_data': {
+            'total_records': len(crime_df),
+            'date_range': {
+                'start': crime_df['incidentdate'].min().isoformat() if len(crime_df) > 0 else None,
+                'end': crime_df['incidentdate'].max().isoformat() if len(crime_df) > 0 else None
+            },
+            'crime_types': crime_df['crimetype'].value_counts().to_dict() if len(crime_df) > 0 else {},
+            'neighborhoods': crime_df['neighborhood'].value_counts().head(10).to_dict() if len(crime_df) > 0 else {}
+        },
+        'requests_data': {
+            'total_records': len(requests_df),
+            'date_range': {
+                'start': requests_df['datecreated'].min().isoformat() if len(requests_df) > 0 else None,
+                'end': requests_df['datecreated'].max().isoformat() if len(requests_df) > 0 else None
+            },
+            'service_types': requests_df['servicetype'].value_counts().to_dict() if len(requests_df) > 0 else {}
+        }
+    }
+    
+    return summary
+
+if __name__ == "__main__":
+    # Test data retrieval
+    try:
+        crime_df, requests_df = get_real_data()
+        summary = get_data_summary(crime_df, requests_df)
+        
+        print("\n📊 Data Summary:")
+        print(f"Crime incidents: {summary['crime_data']['total_records']} records")
+        print(f"311 requests: {summary['requests_data']['total_records']} records")
+        print(f"Crime types: {list(summary['crime_data']['crime_types'].keys())[:5]}...")
+        print(f"Service types: {list(summary['requests_data']['service_types'].keys())[:5]}...")
+        
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        print("Make sure PostgreSQL is running and contains data.")
