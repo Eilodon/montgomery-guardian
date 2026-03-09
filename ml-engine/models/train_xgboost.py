@@ -199,8 +199,30 @@ def predict_batch(model_data: Dict[str, Any], X_batch: pd.DataFrame) -> pd.DataF
     risk_levels = le.inverse_transform(risk_encoded)
     probabilities = model.predict_proba(X_batch).max(axis=1)
     
-    # LƯU Ý: Chỉ tính SHAP cho các điểm quan trọng để tiết kiệm CPU, hoặc tính batch
+    # LƯU Ý: Chỉ tính SHAP cho các điểm quan trọng để tiết kiệm CPU, hoặc tính batch (FIX 2)
+    # TreeSHAP của XGBoost cực kỳ nhanh nhờ C++ backend
     shap_vals = explainer.shap_values(X_batch)
+    
+    # Xử lý trường hợp đa lớp (binary vs multi-class)
+    # TreeSHAP trả về List[Array] cho multi-class, hoặc Array cho binary
+    is_multiclass = isinstance(shap_vals, list)
+    
+    # Lấy top 3 features để tiết kiệm bandwidth
+    batch_shap_features = []
+    for row_idx in range(len(X_batch)):
+        # Nếu là multi-class, ta lấy SHAP của predicted class
+        if is_multiclass:
+            # risk_encoded[row_idx] là index của class dự đoán
+            row_shap = shap_vals[risk_encoded[row_idx]][row_idx]
+        else:
+            row_shap = shap_vals[row_idx]
+            
+        # Tạo dict: Feature -> Độ lớn SHAP
+        feat_dict = {feat: float(abs(val)) for feat, val in zip(feature_cols, row_shap) if abs(val) > 0.01}
+        
+        # Chỉ giữ Top 3 quan trọng nhất
+        top_3 = dict(sorted(feat_dict.items(), key=lambda item: item[1], reverse=True)[:3])
+        batch_shap_features.append(top_3)
     
     # Trả về DataFrame
     results = pd.DataFrame({
@@ -208,8 +230,7 @@ def predict_batch(model_data: Dict[str, Any], X_batch: pd.DataFrame) -> pd.DataF
         'confidenceScore': probabilities
     })
     
-    # Giả lập hoặc tính SHAP rút gọn ở đây để tránh nghẽn
-    results['shapFeatures'] = [{}] * len(results) # Tối ưu: Chỉ tính top features
+    results['shapFeatures'] = batch_shap_features
     return results
 
 def predict(model_data: Dict[str, Any], features: Dict[str, Any]) -> Dict[str, Any]:

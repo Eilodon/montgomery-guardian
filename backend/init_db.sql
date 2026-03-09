@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS crime_incidents (
     reported_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     district VARCHAR(50),
     severity VARCHAR(20) CHECK (severity IN ('low', 'medium', 'high', 'critical')),
-    status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'resolved', 'investigating')),
+    status VARCHAR(20) DEFAULT 'open' CHECK (status IN ('open', 'closed', 'investigating')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -41,7 +41,7 @@ CREATE TABLE IF NOT EXISTS service_requests_311 (
     request_date TIMESTAMP NOT NULL,
     reported_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     district VARCHAR(50),
-    status VARCHAR(20) DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'resolved', 'closed')),
+    status VARCHAR(20) DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'closed')),
     priority VARCHAR(20) DEFAULT 'normal' CHECK (priority IN ('low', 'normal', 'high', 'emergency')),
     estimated_resolution_days INTEGER DEFAULT 5,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -106,7 +106,7 @@ INSERT INTO service_requests_311 (request_id, service_type, description, locatio
 -- Create views for common queries
 CREATE OR REPLACE VIEW v_active_crimes AS
 SELECT * FROM crime_incidents 
-WHERE status = 'active' 
+WHERE status = 'open' 
 AND incident_date >= NOW() - INTERVAL '30 days';
 
 CREATE OR REPLACE VIEW v_open_311_requests AS

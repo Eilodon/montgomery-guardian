@@ -40,11 +40,17 @@ async def analyze_image(
     # Validate thực sự với Pillow (tránh file độc hại)
     try:
         img = Image.open(io.BytesIO(content))
-        img.verify()  # kiểm tra header
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid or corrupted image")
-
-    try:
+        img_format = img.format or 'JPEG'
+        
+        # THỢ RÈN: Chặn đứng OOM - Resize ảnh xuống mức an toàn (max 1024px)
+        # Tiết kiệm RAM + Token Gemini + Giảm Latency
+        max_dim = 1024
+        if img.width > max_dim or img.height > max_dim:
+            img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+            output = io.BytesIO()
+            img.save(output, format=img_format, quality=85)
+            content = output.getvalue()
+            
         image_base64 = base64.b64encode(content).decode('utf-8')
         
         # Try direct Gemini Vision API first

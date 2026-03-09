@@ -4,7 +4,10 @@ import httpx
 from datetime import datetime, timedelta
 from typing import List, Dict
 import json
+from .bright_data_client import scrape_url_as_markdown
+from .alert_extractor import extract_alerts_from_content
 from api.core.redis import redis_client
+from api.core.config import settings
 
 class NewsScraper:
     def __init__(self):
@@ -44,36 +47,25 @@ class NewsScraper:
         return all_alerts
     
     async def scrape_source(self, source: Dict) -> List[Dict]:
-        """Scrape a single news source"""
-        # For demo purposes, create mock alerts
-        # In production, this would use actual web scraping or Bright Data MCP
-        
-        mock_alerts = [
-            {
-                "id": f"alert_{datetime.now().timestamp()}_{source['name'][:3]}_1",
-                "title": "Traffic Accident Reported on Interstate 85",
-                "summary": "Multi-vehicle accident reported on I-85 near Montgomery. Emergency services on scene.",
-                "severity": "high",
-                "source": source["name"],
-                "source_url": source["url"],
-                "timestamp": datetime.now().isoformat(),
-                "coordinates": [32.3617, -86.2792],
-                "affected_neighborhood": "Downtown"
-            },
-            {
-                "id": f"alert_{datetime.now().timestamp()}_{source['name'][:3]}_2",
-                "title": "Weather Advisory: Severe Thunderstorm Warning",
-                "summary": "National Weather Service has issued a severe thunderstorm warning for Montgomery area. Seek shelter immediately.",
-                "severity": "medium",
-                "source": source["name"],
-                "source_url": source["url"],
-                "timestamp": (datetime.now() - timedelta(hours=1)).isoformat(),
-                "coordinates": [32.3617, -86.2792],
-                "affected_neighborhood": "Citywide"
-            }
-        ]
-        
-        return mock_alerts
+        """Scrape a single news source using Bright Data and AI extraction"""
+        try:
+            print(f"🕵️ Scraping {source['name']} via Bright Data...")
+            markdown_content = await scrape_url_as_markdown(source['url'])
+            
+            if not markdown_content:
+                print(f"⚠️ No content returned for {source['name']}")
+                return []
+            
+            # Use AlertExtractor to get structured data from Markdown
+            # In a full-blown implementation, this would call a Gemini-powered extraction service
+            alerts = extract_alerts_from_content(source['url'], markdown_content)
+            
+            # Convert AlertItem objects to dictionaries for storage
+            return [alert.model_dump() for alert in alerts]
+            
+        except Exception as e:
+            print(f"❌ Error scraping {source['name']}: {e}")
+            return []
     
     async def cache_alerts(self, alerts: List[Dict]):
         """Cache alerts in Redis"""

@@ -3,7 +3,7 @@ import { queryRequestsTool } from '../tools/requests_tool';
 import { ragService } from '../rag';
 import { AgentInput, ToolResponse } from '../types/agents';
 import { logger } from '../utils/logger';
-import { sanitizeForPrompt } from '../utils/prompt_sanitizer';
+import { sanitizeForPrompt, safeJsonStringify } from '../utils/prompt_sanitizer';
 
 export async function agent311(ai: any, input: AgentInput): Promise<any> {
   try {
@@ -21,7 +21,7 @@ export async function agent311(ai: any, input: AgentInput): Promise<any> {
     try {
       const ragResult = await ragService.searchKnowledge(
         input.message,
-        'service_requests',
+        'service_request', // Đồng bộ với metadata trong chroma_setup.py
         3
       );
 
@@ -61,7 +61,7 @@ CONTEXT:
 ${locationContext}
 ${historyContext}
 ${ragContext}
-${requestData ? `Recent 311 request data: ${JSON.stringify(sanitizeForPrompt(requestData)).substring(0, 400)}` : 'No specific 311 request data available for this query.'}
+${requestData ? `Recent 311 request data: ${safeJsonStringify(sanitizeForPrompt(requestData), 3)}` : 'No specific 311 request data available for this query.'}
 - Trash collection issues
 - Flooding and drainage
 - Overgrown grass/vegetation

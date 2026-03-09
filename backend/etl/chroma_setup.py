@@ -16,31 +16,21 @@ class ChromaSetup:
         self.embedding_fn = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
         
     def create_collections(self):
-        """Create collections for RAG knowledge base"""
+        """Create a single unified collection for RAG knowledge base"""
         try:
-            # Create crime incidents collection
-            crime_collection = self.client.get_or_create_collection(
-                name="crime_incidents",
+            # Create unified knowledge collection
+            knowledge_collection = self.client.get_or_create_collection(
+                name="montgomery_knowledge",
                 embedding_function=self.embedding_fn,
-                metadata={"description": "Crime incident data for RAG"}
+                metadata={"description": "Unified Montgomery city knowledge base"}
             )
             
-            # Create 311 requests collection
-            requests_collection = self.client.get_or_create_collection(
-                name="service_requests_311", 
-                embedding_function=self.embedding_fn,
-                metadata={"description": "311 service request data for RAG"}
-            )
+            print("✅ Unified ChromaDB collection 'montgomery_knowledge' created successfully")
+            return knowledge_collection
             
-            # Create city policies collection
-            policies_collection = self.client.get_or_create_collection(
-                name="city_policies",
-                embedding_function=self.embedding_fn,
-                metadata={"description": "City policies and procedures"}
-            )
-            
-            print("✅ ChromaDB collections created successfully")
-            return crime_collection, requests_collection, policies_collection
+        except Exception as e:
+            print(f"❌ Failed to create collection: {e}")
+            raise
             
         except Exception as e:
             print(f"❌ Failed to create collections: {e}")
@@ -49,11 +39,11 @@ class ChromaSetup:
     def populate_with_fallback_data(self):
         """Populate collections with fallback data"""
         try:
-            # Get collections
-            crime_collection, requests_collection, policies_collection = self.create_collections()
+            # Get collection
+            knowledge_collection = self.create_collections()
             
             # Load fallback data
-            data_dir = Path("etl/data")
+            data_dir = Path("backend/etl/data") if Path("backend/etl/data").exists() else Path("etl/data")
             crime_df = pd.read_csv(data_dir / "crime_mapping_fallback.csv")
             requests_df = pd.read_csv(data_dir / "requests_311_fallback.csv")
             
@@ -74,6 +64,7 @@ class ChromaSetup:
                 crime_ids.append(f"crime_{row.get('objectid', _)}")
                 crime_metadatas.append({
                     "type": "crime",
+                    "category": "crime", # For filtering
                     "crimetype": row.get('crimetype', 'Unknown'),
                     "neighborhood": row.get('neighborhood', 'Unknown'),
                     "latitude": row.get('latitude', 0),
@@ -83,7 +74,7 @@ class ChromaSetup:
             
             # Add crime documents to collection
             if crime_documents:
-                crime_collection.add(
+                knowledge_collection.add(
                     documents=crime_documents,
                     ids=crime_ids,
                     metadatas=crime_metadatas
@@ -107,6 +98,7 @@ class ChromaSetup:
                 requests_ids.append(f"request_{row.get('objectid', _)}")
                 requests_metadatas.append({
                     "type": "service_request",
+                    "category": "service_request", # For filtering (FIXED)
                     "servicetype": row.get('servicetype', 'Unknown'),
                     "address": row.get('address', 'Unknown'),
                     "latitude": row.get('latitude', 0),
@@ -116,7 +108,7 @@ class ChromaSetup:
             
             # Add 311 request documents to collection
             if requests_documents:
-                requests_collection.add(
+                knowledge_collection.add(
                     documents=requests_documents,
                     ids=requests_ids,
                     metadatas=requests_metadatas
@@ -128,21 +120,21 @@ class ChromaSetup:
                 {
                     "id": "policy_001",
                     "text": "Montgomery 311 Service Request Guidelines: Residents can report non-emergency issues such as potholes, graffiti, trash collection, and flooding through the 311 system. Most requests are resolved within 3-7 business days.",
-                    "metadata": {"type": "policy", "category": "311_guidelines"}
+                    "metadata": {"type": "policy", "category": "city_policy", "sub_category": "311_guidelines"}
                 },
                 {
                     "id": "policy_002", 
                     "text": "Crime Reporting: For emergencies, call 911 immediately. For non-emergency crime reports, contact Montgomery Police Department non-emergency line. Always provide accurate location and time information.",
-                    "metadata": {"type": "policy", "category": "crime_reporting"}
+                    "metadata": {"type": "policy", "category": "city_policy", "sub_category": "crime_reporting"}
                 },
                 {
                     "id": "policy_003",
                     "text": "Pothole Repair Process: Pothole reports are typically addressed within 48-72 hours based on severity. Major road hazards are prioritized over minor cosmetic damage.",
-                    "metadata": {"type": "policy", "category": "pothole_repair"}
+                    "metadata": {"type": "policy", "category": "city_policy", "sub_category": "pothole_repair"}
                 }
             ]
             
-            policies_collection.add(
+            knowledge_collection.add(
                 documents=[p["text"] for p in sample_policies],
                 ids=[p["id"] for p in sample_policies],
                 metadatas=[p["metadata"] for p in sample_policies]

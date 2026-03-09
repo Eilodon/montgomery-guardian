@@ -4,7 +4,7 @@ import { queryCrimeTool } from '../tools/crime_tool';
 import { ragService } from '../rag';
 import { AgentInput, ToolResponse } from '../types/agents';
 import { logger } from '../utils/logger';
-import { sanitizeForPrompt } from '../utils/prompt_sanitizer';
+import { sanitizeForPrompt, safeJsonStringify } from '../utils/prompt_sanitizer';
 
 export async function safetyAgent(ai: any, input: AgentInput): Promise<any> {
   try {
@@ -22,7 +22,7 @@ export async function safetyAgent(ai: any, input: AgentInput): Promise<any> {
     try {
       const ragResult = await ragService.searchKnowledge(
         input.message,
-        'crime_incidents',
+        'crime', // Đồng bộ với metadata trong chroma_setup.py
         3
       );
 
@@ -60,7 +60,7 @@ CONTEXT:
 ${locationContext}
 ${historyContext}
 ${ragContext}
-${crimeData ? `Recent crime data: ${JSON.stringify(sanitizeForPrompt(crimeData)).substring(0, 400)}` : 'No specific crime data available for this request.'}
+${crimeData ? `Recent crime data: ${safeJsonStringify(sanitizeForPrompt(crimeData), 3)}` : 'No specific crime data available for this request.'}
 1. Addresses their specific safety concern
 2. Provides relevant crime statistics if available
 3. Offers practical safety advice

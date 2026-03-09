@@ -19,8 +19,14 @@ const INJECTION_PATTERNS = [
  */
 export function sanitizeString(value: string, maxLength = 300): string {
     let sanitized = String(value).substring(0, maxLength);
-    for (const pattern of INJECTION_PATTERNS) {
-        sanitized = sanitized.replace(pattern, '[REDACTED]');
+    let previous = "";
+
+    // Vòng lặp đệ quy cho đến khi không còn pattern nào bị phát hiện (FIX 3)
+    while (sanitized !== previous) {
+        previous = sanitized;
+        for (const pattern of INJECTION_PATTERNS) {
+            sanitized = sanitized.replace(pattern, '[REDACTED]');
+        }
     }
     return sanitized;
 }
@@ -52,4 +58,22 @@ export function sanitizeForPrompt(
         return sanitized;
     }
     return '[UNSUPPORTED_TYPE]';
+}
+
+/**
+ * Stringify JSON một cách an toàn, giới hạn số lượng items nếu là array (FIX 2).
+ * Đảm bảo LLM luôn nhận được JSON hợp lệ, không bị "rách" cấu trúc.
+ */
+export function safeJsonStringify(data: any, maxItems: number = 3): string {
+    if (!data) return 'null';
+
+    try {
+        // Nếu là array, chỉ lấy top N records quan trọng nhất
+        const truncatedData = Array.isArray(data) ? data.slice(0, maxItems) : data;
+
+        // Stringify toàn bộ truncated data (không substring sau đó)
+        return JSON.stringify(truncatedData);
+    } catch (e) {
+        return '"[JSON_ERROR]"';
+    }
 }

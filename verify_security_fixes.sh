@@ -1,4 +1,4 @@
-#!/bash/bash
+#!/bin/bash
 # verify_security_fixes.sh
 
 API_KEY="mg_secret_key_2026_change_me"

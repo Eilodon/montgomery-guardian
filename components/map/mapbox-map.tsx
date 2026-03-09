@@ -16,6 +16,7 @@ interface MapboxMapProps {
   onMapLoad?: (map: mapboxgl.Map) => void;
   onMapClick?: (event: mapboxgl.MapMouseEvent) => void;
   crimeData?: any[];
+  crimeGeoJson?: any;
   requests311?: any[];
   showHeatmap?: boolean;
   show311Points?: boolean;
@@ -35,6 +36,7 @@ export function MapboxMap({
   onMapLoad,
   onMapClick,
   crimeData,
+  crimeGeoJson,
   requests311,
   showHeatmap = false,
   show311Points = false,
@@ -221,16 +223,18 @@ export function MapboxMap({
     }
   }, [initialViewState, mapLoaded]);
 
-  // Handle layers
+  // Handle layers (Single Mutator)
   useEffect(() => {
     if (map.current && mapLoaded) {
-      if (showHeatmap && effectiveCrimeData) {
-        addCrimeHeatmapLayer(map.current, effectiveCrimeData);
+      // Heatmap handling
+      if (showHeatmap && (crimeGeoJson || effectiveCrimeData)) {
+        addCrimeHeatmapLayer(map.current, crimeGeoJson || effectiveCrimeData, "crime-heatmap");
       } else if (!showHeatmap && map.current.getLayer("crime-heatmap-circles")) {
         map.current.removeLayer("crime-heatmap-circles");
         map.current.removeSource("crime-heatmap");
       }
 
+      // 311 Points handling
       if (show311Points && effectiveRequests311) {
         add311MarkersLayer(map.current, effectiveRequests311);
       } else if (!show311Points && map.current.getLayer("311-markers-symbols")) {
@@ -238,7 +242,7 @@ export function MapboxMap({
         map.current.removeSource("311-markers");
       }
     }
-  }, [mapLoaded, crimeData, requests311, showHeatmap, show311Points]);
+  }, [mapLoaded, crimeData, crimeGeoJson, requests311, showHeatmap, show311Points]);
 
   return (
     <div className={`relative w-full h-full ${className}`}>
@@ -279,39 +283,42 @@ export function useMapboxMap() {
   return { map, setMap };
 }
 
-// Helper function to add crime heatmap layer
 export function addCrimeHeatmapLayer(
   map: mapboxgl.Map,
-  crimeData: any[],
+  data: any[] | any, // Can be raw array or GeoJSON object
   layerId: string = "crime-heatmap"
 ) {
   // Guard: không thao tác nếu style chưa load xong
   if (!map.isStyleLoaded()) {
-    map.once("styledata", () => addCrimeHeatmapLayer(map, crimeData, layerId));
+    map.once("styledata", () => addCrimeHeatmapLayer(map, data, layerId));
     return;
   }
 
-  const sourceData: mapboxgl.GeoJSONSourceSpecification["data"] = {
-    type: "FeatureCollection",
-    features: crimeData.map((crime) => ({
-      type: "Feature",
-      properties: {
-        ...crime,
-        intensity:
-          crime.riskLevel === "critical"
-            ? 1
-            : crime.riskLevel === "high"
-              ? 0.75
-              : crime.riskLevel === "medium"
-                ? 0.5
-                : 0.25,
-      },
-      geometry: {
-        type: "Point",
-        coordinates: [crime.longitude, crime.latitude],
-      },
-    })),
-  };
+  // Pre-process if it's a raw array, otherwise use directly
+  const sourceData: mapboxgl.GeoJSONSourceSpecification["data"] =
+    (data && data.type === "FeatureCollection")
+      ? data
+      : {
+        type: "FeatureCollection",
+        features: (data as any[]).map((crime) => ({
+          type: "Feature",
+          properties: {
+            ...crime,
+            intensity:
+              crime.riskLevel === "critical"
+                ? 1
+                : crime.riskLevel === "high"
+                  ? 0.75
+                  : crime.riskLevel === "medium"
+                    ? 0.5
+                    : 0.25,
+          },
+          geometry: {
+            type: "Point",
+            coordinates: [crime.longitude, crime.latitude],
+          },
+        })),
+      };
 
   const existingSource = map.getSource(layerId) as mapboxgl.GeoJSONSource | undefined;
 

@@ -65,15 +65,27 @@ Return JSON only (no markdown, no explanation):
     const response = result.response;
     const text = response.text();
 
-    // Parse JSON response - Now guaranteed to be valid JSON by the API
-    let parsedResult;
-    try {
-      parsedResult = JSON.parse(text);
-    } catch (parseError) {
-      logger.error('VisionParse', parseError);
-      throw new Error('Invalid vision analysis response format');
+    // THỢ RÈN: Bóc tách JSON an toàn, bỏ qua mọi rác Markdown xung quanh
+    // Bảo vệ Agent khỏi "Markdown Hallucination"
+    let cleanText = text;
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleanText = jsonMatch[0];
     }
 
+    // Parse JSON response - Now guaranteed to be more resilient
+    let parsedResult;
+    try {
+      parsedResult = JSON.parse(cleanText);
+    } catch (parseError) {
+      logger.error('VisionParse', parseError);
+      // Nếu vẫn lỗi, thử parse text gốc như fallback cuối cùng
+      try {
+        parsedResult = JSON.parse(text);
+      } catch (e) {
+        throw new Error('Invalid vision analysis response format after cleanup');
+      }
+    }
     // Validate and sanitize the response
     if (!parsedResult.incidentType || !parsedResult.severity || !parsedResult.confidence || !parsedResult.description) {
       throw new Error('Invalid vision analysis response format');

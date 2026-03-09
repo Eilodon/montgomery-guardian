@@ -7,6 +7,15 @@ from .requests_311_etl import run_requests_311_etl
 from scraper.news_scraper import run_news_scraper
 from .arcgis_client import create_fallback_data
 
+async def run_with_timeout(coro, timeout: int = 300):
+    """Bọc thép: Hủy task nếu vượt quá 5 phút (FIX 3)"""
+    try:
+        await asyncio.wait_for(coro, timeout=timeout)
+    except asyncio.TimeoutError:
+        print(f"❌ [CRITICAL] ETL Task timed out after {timeout} seconds! Task name: {coro.__name__ if hasattr(coro, '__name__') else 'unknown'}")
+    except Exception as e:
+        print(f"❌ ETL Error in {coro.__name__ if hasattr(coro, '__name__') else 'unknown'}: {e}")
+
 async def run_all_etl_jobs():
     """Run all ETL jobs"""
     try:
@@ -42,14 +51,14 @@ async def scheduler_loop():
         
         # Crime + 311 every 1 hour (3600 seconds)
         if now - last_hourly_run >= 3600:
-            asyncio.create_task(run_all_etl_jobs())
+            # Bọc task trong Circuit Breaker (FIX 3)
+            asyncio.create_task(run_with_timeout(run_all_etl_jobs(), timeout=600)) # 10p cho all jobs
             last_hourly_run = now
             
         # News every 15 minutes (900 seconds)
-        # Note: run_all_etl_jobs also runs news_scraper, 
-        # so we only run it separately if it wasn't just run
         elif now - last_15min_run >= 900:
-            asyncio.create_task(run_news_scraper())
+            # Bọc task trong Circuit Breaker (FIX 3)
+            asyncio.create_task(run_with_timeout(run_news_scraper(), timeout=300)) # 5p cho news
             last_15min_run = now
             
         await asyncio.sleep(30) # Check every 30 seconds

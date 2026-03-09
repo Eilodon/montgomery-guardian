@@ -16,6 +16,7 @@ class ConnectionManager:
         self.active_connections: Dict[str, WebSocket] = {}
         self.connection_metadata: Dict[str, Dict[str, Any]] = {}
         self.rooms: Dict[str, Set[str]] = {}
+        self.heartbeat_task = None
 
     async def connect(self, websocket: WebSocket, connection_id: str, metadata: Dict = None):
         # Note: websocket should be already accepted by the endpoint
@@ -132,6 +133,36 @@ class ConnectionManager:
             "timestamp": datetime.now().isoformat()
         }
 
+    async def _heartbeat_loop(self):
+        """THỢ RÈN: Quét và giết các kết nối chết mỗi 30 giây (FIX 3)"""
+        logger.info("Starting WebSocket heartbeat loop")
+        while True:
+            try:
+                await asyncio.sleep(30)
+                dead_connections = []
+                
+                # Copy keys to avoid mutation during iteration
+                connection_ids = list(self.active_connections.keys())
+                
+                for cid in connection_ids:
+                    ws = self.active_connections.get(cid)
+                    if not ws: continue
+                    
+                    try:
+                        # Gửi ping ép client phải phản hồi ở mức TCP
+                        # Dùng send_text thay vì send_json để tiết kiệm 
+                        await asyncio.wait_for(ws.send_text("ping"), timeout=2.0)
+                    except Exception:
+                        logger.warning(f"Zombie socket detected: {cid}. Cleaning up.")
+                        dead_connections.append(cid)
+                
+                for cid in dead_connections:
+                    await self.disconnect(cid)
+                    
+            except Exception as e:
+                logger.error(f"Error in heartbeat loop: {e}")
+                await asyncio.sleep(1) # Tránh treo vòng lặp
+
     async def handle_client_message(self, connection_id: str, message: str):
         """Handle messages from WebSocket clients"""
         try:
@@ -175,8 +206,15 @@ class ConnectionManager:
 # Global
 manager = ConnectionManager()
 
+# Khởi động Heartbeat loop ngay khi load module (hoặc có thể dùng Lifespan)
+# Lưu ý: Cần một event loop đang chạy, nên ta dùng create_task
+def start_heartbeat():
+    if manager.heartbeat_task is None:
+        manager.heartbeat_task = asyncio.create_task(manager._heartbeat_loop())
+
 # FastAPI WebSocket endpoint
 async def websocket_endpoint(websocket: WebSocket):
+    start_heartbeat() # Đảm bảo loop chạy
     await websocket.accept()
     
     try:

@@ -1,6 +1,6 @@
 # backend/api/models/schemas.py
 # Pydantic models matching shared/types
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, Literal, Dict, Any
 from datetime import datetime
 
@@ -31,26 +31,30 @@ class KPIData(BaseModel):
     avgResponseTime: AvgResponseTime
 
 class CrimeIncident(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
     id: str
-    type: Literal['violent', 'property', 'drug', 'other']
+    type: Literal['violent', 'property', 'drug', 'other'] = Field(alias='crimetype')
     latitude: float
     longitude: float
     neighborhood: str
-    timestamp: datetime  # ISO 8601
+    timestamp: datetime = Field(alias='incidentdate')
     status: Literal['open', 'closed', 'investigating']
     description: Optional[str] = None
 
 class ServiceRequest311(BaseModel):
-    requestId: str
-    serviceType: Literal['pothole', 'graffiti', 'trash', 'flooding', 'overgrown_grass', 'other']
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    requestId: str = Field(alias='objectid')
+    serviceType: Literal['pothole', 'graffiti', 'trash', 'flooding', 'overgrown_grass', 'other'] = Field(alias='servicetype')
     status: Literal['open', 'in_progress', 'closed']
     latitude: float
     longitude: float
     address: str
-    createdAt: datetime
-    updatedAt: datetime
+    createdAt: datetime = Field(alias='datecreated')
+    updatedAt: datetime = Field(alias='datemodified')
     description: Optional[str] = None
-    estimatedResolutionDays: Optional[int] = None
+    estimatedResolutionDays: Optional[int] = Field(None, alias='estimatedresolution')
 
 class RiskPrediction(BaseModel):
     gridCellId: str

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { MapboxMap, addCrimeHeatmapLayer, useMapboxMap } from "./mapbox-map";
+import { useEffect, useState, useMemo } from "react";
+import { MapboxMap, useMapboxMap } from "./mapbox-map";
 import { CrimeIncident } from "@/shared/types";
 import { Calendar, Clock, TrendingUp, AlertTriangle } from "lucide-react";
+import { useThrottle } from "@/lib/hooks/use-throttle";
 
 interface CrimeHeatmapProps {
   className?: string;
@@ -59,48 +60,62 @@ export function CrimeHeatmap({
     return () => abortController.abort();
   }, [timeRange]);
 
-  // Add heatmap layer to map when data is loaded
-  useEffect(() => {
-    if (map && crimeData.length > 0) {
-      // Filter data based on time range and risk level
-      const filteredData = crimeData.filter(incident => {
-        const incidentTime = new Date(incident.timestamp);
-        const now = new Date();
-        const timeDiff = now.getTime() - incidentTime.getTime();
+  // THỢ RÈN: Fix 2 - Thêm bộ giảm xóc WebSocket (Throttling Buffer Frontend)
+  const throttledCrimeData = useThrottle(crimeData, 500);
 
-        // Time range filter
-        let timeFilter = true;
-        switch (timeRange) {
-          case "24h":
-            timeFilter = timeDiff <= 24 * 60 * 60 * 1000;
-            break;
-          case "7d":
-            timeFilter = timeDiff <= 7 * 24 * 60 * 60 * 1000;
-            break;
-          case "30d":
-            timeFilter = timeDiff <= 30 * 24 * 60 * 60 * 1000;
-            break;
-        }
+  // THỢ RÈN: Fix 1 - Tính toán GeoJSON một lần duy nhất trong useMemo
+  const crimeGeoJson = useMemo(() => {
+    if (throttledCrimeData.length === 0) return null;
 
-        // Risk level filter (based on crime type)
-        let riskFilter = true;
-        if (filterRiskLevel !== "all") {
-          const riskLevel = getRiskLevel(incident.type);
-          riskFilter = riskLevel === filterRiskLevel;
-        }
+    const filteredData = throttledCrimeData.filter(incident => {
+      const incidentTime = new Date(incident.timestamp);
+      const now = new Date();
+      const timeDiff = now.getTime() - incidentTime.getTime();
 
-        return timeFilter && riskFilter;
-      });
+      // Time range filter
+      let timeFilter = true;
+      switch (timeRange) {
+        case "24h":
+          timeFilter = timeDiff <= 24 * 60 * 60 * 1000;
+          break;
+        case "7d":
+          timeFilter = timeDiff <= 7 * 24 * 60 * 60 * 1000;
+          break;
+        case "30d":
+          timeFilter = timeDiff <= 30 * 24 * 60 * 60 * 1000;
+          break;
+      }
 
-      // Add risk level for visualization
-      const enrichedData = filteredData.map(incident => ({
-        ...incident,
-        riskLevel: getRiskLevel(incident.type),
-      }));
+      // Risk level filter
+      let riskFilter = true;
+      if (filterRiskLevel !== "all") {
+        const riskLevel = getRiskLevel(incident.type);
+        riskFilter = riskLevel === filterRiskLevel;
+      }
 
-      addCrimeHeatmapLayer(map, enrichedData);
-    }
-  }, [map, crimeData, timeRange, filterRiskLevel]);
+      return timeFilter && riskFilter;
+    });
+
+    return {
+      type: "FeatureCollection" as const,
+      features: filteredData.map((crime) => ({
+        type: "Feature" as const,
+        properties: {
+          ...crime,
+          riskLevel: getRiskLevel(crime.type),
+          intensity: getRiskLevel(crime.type) === "critical" ? 1 :
+            getRiskLevel(crime.type) === "high" ? 0.75 :
+              getRiskLevel(crime.type) === "medium" ? 0.5 : 0.25
+        },
+        geometry: {
+          type: "Point" as const,
+          coordinates: [crime.longitude, crime.latitude],
+        },
+      })),
+    };
+  }, [throttledCrimeData, timeRange, filterRiskLevel]);
+
+  // Remove the problematic useEffect that called addCrimeHeatmapLayer directly
 
   // Handle map click for incident details
   const handleMapClick = (event: any) => {
@@ -153,6 +168,8 @@ export function CrimeHeatmap({
       <MapboxMap
         onMapLoad={setMap}
         onMapClick={handleMapClick}
+        crimeGeoJson={crimeGeoJson}
+        showHeatmap={true}
         className="w-full h-full"
       />
 
@@ -202,8 +219,8 @@ export function CrimeHeatmap({
                 key={range}
                 onClick={() => onTimeRangeChange?.(range)}
                 className={`px-2 py-1 rounded text-xs font-medium transition-colors ${timeRange === range
-                    ? "bg-blue-500 text-white"
-                    : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                  ? "bg-blue-500 text-white"
+                  : "bg-slate-700 text-slate-300 hover:bg-slate-600"
                   }`}
               >
                 {range}
@@ -266,8 +283,8 @@ export function CrimeHeatmap({
             <div>
               <span className="text-slate-400">Status:</span>
               <span className={`ml-2 capitalize ${selectedIncident.status === "open" ? "text-red-400" :
-                  selectedIncident.status === "investigating" ? "text-yellow-400" :
-                    "text-green-400"
+                selectedIncident.status === "investigating" ? "text-yellow-400" :
+                  "text-green-400"
                 }`}>
                 {selectedIncident.status}
               </span>
